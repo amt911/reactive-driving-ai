@@ -15,7 +15,28 @@ s≈480–640 m the planner's `target_speed` drops from 57 to 18 m/s in ~75 m �
 car can do — while the racing line's own speed in that zone only goes from 62 to 51 m/s. The car
 ends up ~10 m off the line. Baseline for the whole run: best lap **82.6 s vs 63.4 s ideal, 9 wall
 hits, ~3.5 µs/tick**.
-**Cause (suspected, not confirmed).** Step 4 of `Planner::plan` (`crates/rdai-core/src/planner.rs`)
+**Investigation 2026-11-11 (branch `fix/planner-braking`, WIP).**
+- *Confirmed:* with `RDAI_PROBE`-style instrumentation, the line-only envelope stays at the line's
+  speed (61 → 51 m/s) while the chosen candidate's envelope falls to 17 m/s; the minimum is always
+  at the first sample (σ ≈ 11 m), where the quintic returning to the line curves hardest. The
+  candidate is chosen by lateral cost only; its speed cost is never compared.
+- *Also confirmed:* the line's own profile uses 12.2–13.4 m/s² combined in s≈490–700 against the
+  sim's μg = 12.75 — no margin, so any tracking error becomes understeer; and full braking in mid
+  corner (brake 1.0 from s≈565) saturates the sim's friction ellipse, so the car drifts out
+  while steering more (a feedback loop with the collapsing target).
+- *Tried* (`bench --cars 1 --laps 2`, baseline 82.6 s / 9 walls):
+  1. speed-loss cost per candidate (1.2 per m/s vs the line-only envelope): 101.7 s / 31 walls;
+  2. + infeasibility cost 100·(min(v, v_line) − v_path): **78.2 s / 22 walls**, regression test
+     green, FFI round trip green — faster, but more walls: the σ = 0 sample penalises the line
+     itself whenever the car is above line speed, so it drifts to flatter, outer paths;
+  3. sim: aero drag outside the tyre ellipse: 77.7 s / 29 walls — rejected;
+  4. infeasibility measured from σ > 0 against v: 84.3 s / 52 walls, 8-car race DNFs — rejected.
+- *Open question (architecture):* candidates have one fixed transition length (`v · 0.9 s`),
+  so a 2 m return always costs κ ≈ 0.004 1/m extra; Werling samples several transition times
+  and plans speed jointly. Next step proposed: sample 2–3 transition lengths per end offset and
+  give the line profile a combined-grip margin, instead of more cost weights.
+
+**Cause (original suspicion).** Step 4 of `Planner::plan` (`crates/rdai-core/src/planner.rs`)
 evaluates `kappa = line.curvature[idx] + q.second(sigma)`. When the car is displaced laterally, the
 chosen quintic's second derivative adds curvature that the speed profile never saw, the
 `sqrt(a_lat / kappa)` cap collapses, and nothing makes that cap respect the braking envelope as the
@@ -53,6 +74,15 @@ which aborts the process (Rust ≥ 1.81) and takes the game engine down.
 Found: 2026-11-11 · ffi · **Status: open**
 
 ## Findings
+
+### `bench` lap counter counts 17–21 laps in a 2-lap race after spins
+
+**Symptom.** With a destabilised planner (branch `fix/planner-braking`, attempt 4) the 8-car
+`bench --laps 2` showed cars with 17–21 laps and DNFs after 1800 s. Not seen on `main`.
+**Cause.** Not investigated; likely cars spinning or reversing across the start line count a lap
+each crossing. **Fix.** Pending; a behaviour test should assert laps ≤ the race length.
+
+Found: 2026-11-11 · sim
 
 ### crates.io downloads of large crates fail with `SSL routines::unexpected eof while reading`
 

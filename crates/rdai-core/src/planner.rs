@@ -198,6 +198,10 @@ impl ObsFrenet {
 }
 
 const COLLISION_COST: f32 = 1.0e4;
+/// Cost per m/s of speed a candidate gives up (behind a leader, or through its own curvature).
+const SPEED_LOSS_COST: f32 = 1.2;
+/// Cost per m/s a candidate's speed envelope falls below what the car can brake to (infeasible).
+const INFEASIBLE_COST: f32 = 100.0;
 
 /// Reusable planner (keeps buffers and the previous choice for hysteresis).
 #[derive(Clone, Debug)]
@@ -277,6 +281,30 @@ impl Planner {
         deltas[count + 1] = self.prev_delta.clamp(lo, hi.max(lo));
         count += 2;
 
+        // Speed a candidate allows: line speed scaled by grip, capped by the candidate's own path
+        // curvature, within the braking envelope over the horizon (from `from` metres ahead on).
+        let a_lat = line.limits.max_lat_accel * grip;
+        let envelope = |q: &Quintic, from: f32| {
+            let mut best = f32::INFINITY;
+            for k in 0..=p.samples {
+                let sigma = from + (horizon - from) * k as f32 / p.samples as f32;
+                let s = ego.s + sigma;
+                let idx = track.index_at(s).0;
+                let kappa = (line.curvature[idx] + q.second(sigma)).abs();
+                let mut vk = line.speed_at(track, s) * grip.sqrt();
+                if kappa > 1e-4 {
+                    vk = vk.min((a_lat / kappa).sqrt());
+                }
+                best = best.min((vk * vk + 2.0 * b_eff * (sigma - from)).sqrt());
+            }
+            best
+        };
+        // What the line itself allows from here: the reference for each candidate's speed loss.
+        // Werling et al. 2010 cost the lateral and longitudinal parts of a trajectory together;
+        // costing only the lateral part picked "back to the line now" even when its curvature
+        // demanded braking far beyond the line's own profile (docs/FINDINGS.md).
+        let v_line = envelope(&Quintic::default(), 0.0);
+
         if let Some(dbg) = self.debug.as_mut() {
             dbg.clear();
         }
@@ -285,6 +313,15 @@ impl Planner {
         for (ci, &delta) in deltas[..count].iter().enumerate() {
             let q = Quintic::new(e0, de0, delta, transition);
             let mut cost = drv.line_attachment * 1.0 * delta * delta + 0.25 * (delta - self.prev_delta).powi(2);
+            // Speed this path gives up against the line (same weight as speed lost behind a leader).
+            let v_path = envelope(&q, 0.0);
+            cost += SPEED_LOSS_COST * (v_line - v_path).max(0.0);
+            // Below the current speed, following this path needs more than `b_eff` of braking: the
+            // car cannot do it and would leave the path (Werling 2010 discards such candidates).
+            // A steep cost instead of a discard keeps a least-bad choice when every path is too tight.
+            // WIP (docs/FINDINGS.md): this also penalises the line itself whenever the car is above
+            // the line's speed at sigma = 0, pushing it to flatter, outer paths (more wall hits).
+            cost += INFEASIBLE_COST * (v.min(v_line) - v_path).max(0.0);
             let mut collides = false;
             let mut leader: Option<usize> = None;
             let mut v_cap = f32::INFINITY;
@@ -344,7 +381,7 @@ impl Planner {
                 // Speed lost by staying behind this obstacle.
                 let v_line = line.speed_at(track, ego.s + horizon);
                 let lost = (v_line - v_cap).max(0.0);
-                cost += 1.2 * lost;
+                cost += SPEED_LOSS_COST * lost;
                 let _ = oi;
             }
             if ci == count - 2 && leader.is_some() {
@@ -363,25 +400,9 @@ impl Planner {
         // 4. Speed: line speed scaled by grip, path curvature, braking envelope over the horizon.
         //    Evaluated now and a short preview ahead; their difference is the feedforward
         //    deceleration, so braking starts on time instead of lagging a P loop.
-        let a_lat = line.limits.max_lat_accel * grip;
-        let envelope = |from: f32| {
-            let mut best = f32::INFINITY;
-            for k in 0..=p.samples {
-                let sigma = from + (horizon - from) * k as f32 / p.samples as f32;
-                let s = ego.s + sigma;
-                let idx = track.index_at(s).0;
-                let kappa = (line.curvature[idx] + q.second(sigma)).abs();
-                let mut vk = line.speed_at(track, s) * grip.sqrt();
-                if kappa > 1e-4 {
-                    vk = vk.min((a_lat / kappa).sqrt());
-                }
-                best = best.min((vk * vk + 2.0 * b_eff * (sigma - from)).sqrt());
-            }
-            best
-        };
         let preview = (v * 0.25).max(2.0);
-        let mut target = envelope(0.0);
-        let ahead = envelope(preview);
+        let mut target = envelope(&q, 0.0);
+        let ahead = envelope(&q, preview);
         let accel_ff = ((ahead * ahead - target * target) / (2.0 * preview)).clamp(-line.limits.max_brake, line.limits.max_accel);
 
         // 5. Car following (IDM interaction term, Treiber et al. 2000) on the chosen path's leader.
