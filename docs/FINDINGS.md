@@ -34,6 +34,12 @@ hits, ~3.5 µs/tick**.
   (the return is postponed every tick: DNF); a v²·e'' lateral-acceleration cost (87 s); a
   "gentle" transition sized to 25 % of the grip (95 s, crash scenario collapses). A 15 % grip
   margin alone left 34 walls; a 1.5 m line margin did not help.
+- *Evaluate on the matrix, not one race:* single 8-car runs are chaotic (one incident changes every
+  number after it). `scripts/eval.sh [bench]` sums 15 runs (6–10 cars × race/crash/debris, 2
+  laps). 2026-11-11: `main` 2480 walls / 308 contacts / 92 after the scenario / 6 DNF / mean best
+  lap 87.5 s; this branch 56 / 28 / 11 / 0 / 76.0 s. A "gentle return" offered only on ticks
+  without consistency and without obstacles fixed the FFI round trip and solo lap (69.9 s) but
+  gave 61 / **118** / 15 / 0 / 75.7 s — rejected for the contacts.
 - *Still open (latent):* a car that **starts** off the line, or is beyond 1 m of its previous
   plan (spawn, after avoiding, after a hit), still gets the short return quintic and brakes hard:
   `crates/rdai-sim/tests/planner_offset.rs` (2 m offset at s = 548 → 44 m/s target vs 58.8) and the
