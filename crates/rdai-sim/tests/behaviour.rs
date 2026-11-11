@@ -143,8 +143,8 @@ fn ai_costs_microseconds_per_agent_tick() {
 /// so it is not evidence of a pass; finishing order against grid order is.
 /// The slower cars are slower through the car, not the driver: on 2026-11-11 a 90 % vs 100 % grip
 /// driver difference produced no lap-time difference (tracking dominates; docs/FINDINGS.md).
-/// Status 2026-11-11: **red on purpose** — the fast car finishes last (laps 75–110 s, contacts,
-/// Emergency ticks); see docs/FINDINGS.md. Its sabotage is pending until it is green.
+/// Was red until the car being passed stopped braking in Emergency whenever a car was alongside
+/// (docs/FINDINGS.md). Sabotage seen failing: the alongside rule back to "every path collides".
 #[test]
 fn fast_car_overtakes_slower_ones() {
     let driver = DriverProfile { experience: 0.7, stamina: 1.0, aggression: 0.5 };

@@ -89,17 +89,17 @@ which aborts the process (Rust ≥ 1.81) and takes the game engine down.
 
 Found: 2026-11-11 · ffi · **Status: open**
 
-### A faster car does not get past slower ones
+### A faster car did not get past slower ones (fixed on `fix/planner-braking`)
 
-**Symptom.** `crates/rdai-sim/tests/behaviour.rs::fast_car_overtakes_slower_ones`: a 430 kW / μ 1.3
-car starting a row behind two 200 kW / μ 1.1 cars finishes last (laps 75–110 s, 2 contacts, 118
-Emergency ticks). Also: a driver at 100 % grip laps no faster than one at 90 % (73–75 s both) —
-pace is set by tracking quality, not by the grip the profile allows.
-**Cause.** Not investigated yet. Note the test only became meaningful once each car class got its
-own racing line: before, every car drove car 0's speed profile (fixed in the same branch).
-**Fix.** Pending.
+**Symptom.** `fast_car_overtakes_slower_ones`: the faster car finished last; the two cars tangled
+for ~25 s at 7–20 m/s after a contact.
+**Cause.** The car being passed treated *every* path as a collision while the other car was
+alongside ("never steer into it" applied to the path that keeps its lane too), so with no free
+path it braked in Emergency right in front of the overtaker.
+**Fix.** Alongside, only paths that get closer than the current gap collide. Matrix (81 runs):
+walls 2283 → 1261, contacts 943 → 722, after the scenario 560 → 247, DNF 20 → 3.
 
-Found: 2026-11-11 · core/planner · **Status: open**
+Found: 2026-11-11 · core/planner · **Status: fixed**
 
 ## Findings
 

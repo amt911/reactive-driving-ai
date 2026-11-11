@@ -1,31 +1,28 @@
 #!/usr/bin/env bash
 # usage: scripts/eval.sh [BENCH_BINARY] -> one summary line over a matrix of bench runs.
-# Single 8-car runs are chaotic: one incident changes every number after it. Comparing variants on
-# a matrix (tracks x seeds x field sizes x scenarios, 81 runs) is what tells a real change from noise (docs/FINDINGS.md).
-# Prints: runs, total walls, total contacts, contacts after the scenario, DNFs, mean best lap, and
-# fails (exit 1) if any run printed no result table — a run that compared nothing is red.
+# Single races are chaotic: one incident changes every number after it. Comparing variants on a
+# matrix (tracks x seeds x field sizes x scenarios, 81 runs) is what tells a real change from noise
+# (docs/FINDINGS.md). Runs 4 at a time.
+# Prints: runs, walls, contacts capped at 50 per run (two cars stuck together count thousands of
+# contacts and would hide everything else), runs with a pile-up (> 50), contacts after the scenario
+# (capped the same way), DNFs and the mean best lap. Exits 1 if any run printed no result table —
+# a run that compared nothing is red.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-bench=${1:-target/release/bench}
-laps=2
-runs=0; walls=0; contacts=0; after=0; dnf=0; lapsum=0; lapn=0
-for track in default proc:1 proc:2; do
-for seed in 1 2 3; do
-for cars in 6 8 10; do
-  for scenario in race crash debris; do
-    out=$("$bench" --cars "$cars" --laps "$laps" --scenario "$scenario" --seed "$seed" --track "$track")
-    rows=$(grep -cE '^ +[0-9]+ ' <<<"$out" || true)
-    if [ "$rows" -ne "$cars" ]; then
-      echo "eval: $cars cars / $scenario printed $rows result rows" >&2
-      exit 1
-    fi
-    read -r w c d l n < <(awk -v laps="$laps" '/^ +[0-9]+ /{w+=$6; c+=$7; if($5=="DNF")d++; else {l+=$4; n++}; if($3>laps+1) print "eval: lap count " $3 " > " laps > "/dev/stderr"} END{print w+0, c+0, d+0, l+0, n+0}' <<<"$out")
-    a=$(sed -nE 's/.*contacts after scenario: ([0-9]+).*/\1/p' <<<"$out")
-    runs=$((runs + 1)); walls=$((walls + w)); contacts=$((contacts + c)); after=$((after + a)); dnf=$((dnf + d))
-    lapsum=$(awk -v a="$lapsum" -v b="$l" 'BEGIN{print a+b}'); lapn=$((lapn + n))
-  done
-done
-done
-done
-mean=$(awk -v s="$lapsum" -v n="$lapn" 'BEGIN{printf "%.2f", (n ? s / n : 0)}')
-echo "runs $runs walls $walls contacts $contacts after_scenario $after dnf $dnf mean_best_lap $mean"
+bench=$(realpath "${1:-target/release/bench}")
+jobs=$(for track in default proc:1 proc:2; do for seed in 1 2 3; do for cars in 6 8 10; do
+  for scenario in race crash debris; do echo "$track $seed $cars $scenario"; done; done; done; done)
+one() {
+  read -r track seed cars scenario <<<"$1"
+  out=$("$bench" --cars "$cars" --laps 2 --scenario "$scenario" --seed "$seed" --track "$track")
+  rows=$(grep -cE '^ +[0-9]+ ' <<<"$out" || true)
+  [ "$rows" -eq "$cars" ] || { echo "BAD $1: $rows result rows"; return; }
+  a=$(sed -nE 's/.*contacts after scenario: ([0-9]+).*/\1/p' <<<"$out")
+  awk -v a="$a" '/^ +[0-9]+ /{w+=$6; c+=$7; if($5=="DNF")d++; else {l+=$4; n++}}
+    END{print "OK", w+0, c+0, a+0, d+0, l+0, n+0}' <<<"$out"
+}
+export -f one; export bench
+results=$(xargs -P 4 -I{} bash -c 'one "$@"' _ {} <<<"$jobs")
+if grep -q '^BAD' <<<"$results"; then grep '^BAD' <<<"$results" >&2; exit 1; fi
+awk '{runs++; w+=$2; c+=($3>50?50:$3); pile+=($3>50); a+=($4>50?50:$4); d+=$5; l+=$6; n+=$7}
+  END{printf "runs %d walls %d contacts %d pileups %d after_scenario %d dnf %d mean_best_lap %.2f\n", runs, w, c, pile, a, d, (n?l/n:0)}' <<<"$results"

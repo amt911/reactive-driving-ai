@@ -392,9 +392,15 @@ impl Planner {
                                 cost += COLLISION_COST + 1.0e3 * impact.max(0.0);
                             }
                         } else if gap0 > -(p.length + 2.0 * o.half_len) {
-                            // Alongside: never steer into it.
-                            collides = true;
-                            cost += COLLISION_COST;
+                            // Alongside: never steer into it — but holding the current gap is
+                            // safe. Counting every path as a collision (the one that keeps its
+                            // lane included) made a car being overtaken brake in Emergency
+                            // (docs/FINDINGS.md).
+                            let clearance_now = (ego.d - o.d).abs() - half_w - o.half_wid;
+                            if clearance < clearance_now - 0.1 {
+                                collides = true;
+                                cost += COLLISION_COST;
+                            }
                         }
                         // Behind us: its job to avoid us.
                     } else if clearance < drv.lateral_margin + 0.5 && ds.abs() < reach_s + 6.0 {
