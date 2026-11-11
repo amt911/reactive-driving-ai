@@ -121,6 +121,12 @@ The same binary moved walls 1261 → 2531 and contacts 722 → 1218 between seed
 the alongside rule is walls −22 %, contacts −8 %, after the scenario −17 %, DNF 45 → 15 on 243
 runs (not the −45 % / −23 % first reported). HDM multi-anticipation (3 leaders, 1/j² weights) and
 sorting leaders by distance were both worse on the 81-run matrix — not re-run on 243 runs.
+Re-tested on 243 runs: the "gentle return" (extra candidate with a transition sized to 25 % of
+the grip, only with nothing in range) fixes the FFI round trip but slows every lap (mean best
+59.6 → 67.5 s) and raises walls 3659 → 5459 — rejected for good. The solo lap's remaining time
+loss (4.6 s vs the profile, 3.3 s of it at s 2400–2800) is small lateral corrections at 60+ m/s
+whose quintic curvature caps the speed; it needs a different speed/lateral coupling, not a
+longer transition.
 
 Found: 2026-11-11 · tooling
 
