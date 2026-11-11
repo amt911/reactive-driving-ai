@@ -231,7 +231,13 @@ async fn main() {
             WHITE,
         );
         draw_text("Space pause  Up/Down speed  Tab car  F follow  P plans", 16.0, y0 + 64.0, 16.0, LIGHTGRAY);
-        draw_text("K crash  O debris  A/Z aggression  R restart  N new track  B default", 16.0, y0 + 82.0, 16.0, LIGHTGRAY);
+        draw_text(
+            "K crash  O debris  A/Z aggression  R restart  N new track  B default",
+            16.0,
+            y0 + 82.0,
+            16.0,
+            LIGHTGRAY,
+        );
 
         next_frame().await
     }

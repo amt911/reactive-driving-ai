@@ -81,7 +81,9 @@ fn procedural_candidate(rng: &mut rdai_core::rng::Rng) -> Vec<TrackPoint> {
     let scale = 250.0 + 300.0 * rng.next_f32();
     let step = TAU / n as f32;
     let raw: Vec<(f32, f32, f32)> = (0..n)
-        .map(|i| (i as f32 * step + 0.35 * step * rng.signed(), 0.45 + 0.55 * rng.next_f32(), 6.0 + 3.0 * rng.next_f32()))
+        .map(|i| {
+            (i as f32 * step + 0.35 * step * rng.signed(), 0.45 + 0.55 * rng.next_f32(), 6.0 + 3.0 * rng.next_f32())
+        })
         .collect();
     // Smooth radius and width with the neighbours: fewer spikes, still varied.
     (0..n)
