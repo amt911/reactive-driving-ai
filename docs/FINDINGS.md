@@ -52,6 +52,20 @@ which aborts the process (Rust ≥ 1.81) and takes the game engine down.
 
 Found: 2026-11-11 · ffi · **Status: open**
 
+### Cars stopped against an obstacle never backed off
+
+**Symptom.** In the viewer, cars that hit something sat still against it. Test
+`crates/rdai-sim/tests/recovery.rs`: debris touching the nose → stopped in Emergency for 20 s.
+**Cause.** Recovery required `target_speed > 3`, but Emergency sets the target to 0; and a 1.5 s
+reverse (~3 m) left no room to steer round (a 3.5 m sidestep needs ~10 m at the 5.6 m minimum
+turning radius), so the car looped. Reversing was also blind.
+**Fix.** Stopped in Emergency counts as stuck; reverse 3 s; stop reversing when anything is within
+1.5 m behind. Bench matrix (default seed, 45 runs) vs `main`: DNF 18 → 0, walls 7440 → 4842, but
+contacts 924 → 1272 and after the scenario 276 → 453 — partly cars that used to sit out now
+racing again; not yet separated.
+
+Found: 2026-11-11 · core/agent
+
 ## Findings
 
 ### crates.io downloads of large crates fail with `SSL routines::unexpected eof while reading`
