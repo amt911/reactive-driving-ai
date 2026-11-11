@@ -80,9 +80,8 @@ impl RacingLine {
         let points: Vec<Vec2> = (0..n).map(|i| track.point(i) + track.normal(i) * offset[i]).collect();
         let segment: Vec<f32> = (0..n).map(|i| (points[(i + 1) % n] - points[i]).length()).collect();
         // Curvature over a +-2 sample stencil, then a light smoothing pass, to tame discretisation noise.
-        let raw: Vec<f32> = (0..n)
-            .map(|i| menger_curvature(points[(i + n - 2) % n], points[i], points[(i + 2) % n]))
-            .collect();
+        let raw: Vec<f32> =
+            (0..n).map(|i| menger_curvature(points[(i + n - 2) % n], points[i], points[(i + 2) % n])).collect();
         let curvature: Vec<f32> =
             (0..n).map(|i| 0.25 * raw[(i + n - 1) % n] + 0.5 * raw[i] + 0.25 * raw[(i + 1) % n]).collect();
         let speed = speed_profile::compute(&curvature, &segment, limits);
@@ -169,7 +168,16 @@ mod tests {
     #[test]
     fn line_lowers_curvature_and_lap_time_vs_centreline() {
         // A rounded rectangle: the optimised line must cut corners and be faster than the centreline.
-        let pts = [(0.0, 0.0), (200.0, 0.0), (220.0, 20.0), (220.0, 120.0), (200.0, 140.0), (0.0, 140.0), (-20.0, 120.0), (-20.0, 20.0)];
+        let pts = [
+            (0.0, 0.0),
+            (200.0, 0.0),
+            (220.0, 20.0),
+            (220.0, 120.0),
+            (200.0, 140.0),
+            (0.0, 140.0),
+            (-20.0, 120.0),
+            (-20.0, 20.0),
+        ];
         let ctrl: Vec<TrackPoint> =
             pts.iter().map(|&(x, y)| TrackPoint { x, y, width_left: 7.0, width_right: 7.0 }).collect();
         let t = Track::from_control_points(&ctrl, 2.0).unwrap();

@@ -2,7 +2,7 @@
 //! laps and positions, plus scenario hooks (a car crashing ahead, debris on the road).
 
 use rdai_core::{
-    Agent, AgentConfig, Controls, DriverProfile, LineParams, Obstacle, Observation, PlannerParams, RacingLine, Track,
+    Agent, AgentConfig, Controls, DriverProfile, LineParams, Observation, Obstacle, PlannerParams, RacingLine, Track,
     TrackPoint, Vec2,
 };
 

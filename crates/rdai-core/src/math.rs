@@ -146,7 +146,10 @@ mod tests {
             let a = k as f32 * 0.7;
             let w = wrap_angle(a);
             assert!(w > -core::f32::consts::PI - 1e-6 && w <= core::f32::consts::PI + 1e-6);
-            assert!(((a - w) / core::f32::consts::TAU).fract().abs() < 1e-3 || ((a - w) / core::f32::consts::TAU).fract().abs() > 0.999);
+            assert!(
+                ((a - w) / core::f32::consts::TAU).fract().abs() < 1e-3
+                    || ((a - w) / core::f32::consts::TAU).fract().abs() > 0.999
+            );
         }
     }
 

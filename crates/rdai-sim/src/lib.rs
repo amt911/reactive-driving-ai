@@ -14,7 +14,8 @@ use rdai_core::DriverProfile;
 
 /// A varied default field: names, experience, aggression.
 pub fn default_field(n: usize) -> Vec<CarSpec> {
-    let names = ["Alba", "Bruno", "Carla", "Dario", "Elena", "Fermin", "Gala", "Hugo", "Irene", "Jorge", "Kira", "Lucas"];
+    let names =
+        ["Alba", "Bruno", "Carla", "Dario", "Elena", "Fermin", "Gala", "Hugo", "Irene", "Jorge", "Kira", "Lucas"];
     (0..n)
         .map(|i| {
             let f = i as f32 / n.max(1) as f32;
