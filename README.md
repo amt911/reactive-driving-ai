@@ -40,8 +40,10 @@ cargo run --release -p rdai-sim --bin bench -- --cars 8 --laps 3
 cargo run --release -p rdai-sim --bin bench -- --scenario crash    # un coche trompea delante
 cargo run --release -p rdai-sim --bin bench -- --scenario debris   # escombros en la trazada
 
-# Otro circuito: el óvalo de pruebas o un CSV en formato TUMFTM (x_m, y_m, w_tr_right_m, w_tr_left_m)
+# Otro circuito: el óvalo de pruebas, uno procedural (cualquier semilla) o un CSV en formato TUMFTM
+# (x_m, y_m, w_tr_right_m, w_tr_left_m)
 cargo run --release -p rdai-sim --bin bench -- --track oval
+cargo run --release -p rdai-sim --bin bench -- --track proc:42
 cargo run --release -p rdai-sim --bin bench -- --track mi_circuito.csv
 
 # Depuración: traza por tick del coche 0 y la trazada calculada, en CSV
@@ -65,6 +67,8 @@ scripts/c-smoke.sh
 | O | Soltar escombros 80 m por delante del coche seleccionado, sobre su trazada |
 | A / Z | Subir / bajar la agresividad del coche seleccionado |
 | R | Reiniciar la carrera |
+| N | Nuevo circuito procedural (semilla siguiente) |
+| B | Volver al circuito por defecto |
 | Rueda del ratón | Zoom |
 | Botón derecho + arrastrar | Desplazar la vista (desactiva el seguimiento) |
 
