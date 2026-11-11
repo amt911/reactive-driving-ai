@@ -214,6 +214,8 @@ impl Planner {
     }
 
     /// Plans one tick. `obstacles` are in world coordinates; anything out of range is ignored.
+    // Each argument is distinct per-tick input from the agent; bundling them would only rename them.
+    #[allow(clippy::too_many_arguments)]
     pub fn plan(
         &mut self,
         track: &Track,
@@ -353,7 +355,7 @@ impl Planner {
             if let Some(dbg) = self.debug.as_mut() {
                 dbg.push(CandidateDebug { lateral: q, cost, collides });
             }
-            if best.as_ref().map_or(true, |b| cost < b.0) {
+            if best.as_ref().is_none_or(|b| cost < b.0) {
                 best = Some((cost, q, delta, leader, collides));
             }
         }
@@ -382,7 +384,8 @@ impl Planner {
         let preview = (v * 0.25).max(2.0);
         let mut target = envelope(0.0);
         let ahead = envelope(preview);
-        let accel_ff = ((ahead * ahead - target * target) / (2.0 * preview)).clamp(-line.limits.max_brake, line.limits.max_accel);
+        let accel_ff =
+            ((ahead * ahead - target * target) / (2.0 * preview)).clamp(-line.limits.max_brake, line.limits.max_accel);
 
         // 5. Car following (IDM interaction term, Treiber et al. 2000) on the chosen path's leader.
         let mut accel_limit = f32::INFINITY;
@@ -407,7 +410,16 @@ impl Planner {
         } else {
             Mode::Cruise
         };
-        Plan { mode, s0: ego.s, lateral: q, target_speed: target, accel_ff, accel_limit, blocked: on_line_blocked, cost }
+        Plan {
+            mode,
+            s0: ego.s,
+            lateral: q,
+            target_speed: target,
+            accel_ff,
+            accel_limit,
+            blocked: on_line_blocked,
+            cost,
+        }
     }
 }
 

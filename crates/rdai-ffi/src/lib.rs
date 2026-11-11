@@ -5,7 +5,7 @@
 //! Handles are not thread-safe; use one agent per thread or lock.
 
 use rdai_core::{
-    Agent, AgentConfig, Controls, DriverProfile, LineParams, Obstacle, Observation, PlannerParams, RacingLine, Track,
+    Agent, AgentConfig, Controls, DriverProfile, LineParams, Observation, Obstacle, PlannerParams, RacingLine, Track,
     TrackPoint, VehicleGeometry, VehicleLimits,
 };
 
@@ -174,7 +174,11 @@ mod tests {
             assert!(!t.is_null());
             assert!(rdai_track_ideal_lap(t) > 0.0);
             let a = rdai_agent_new(&VehicleGeometry::default(), &DriverProfile::default(), 7);
-            let obs = Observation { position: rdai_core::Vec2::new(150.0, 0.0), heading: core::f32::consts::FRAC_PI_2, speed: 10.0 };
+            let obs = Observation {
+                position: rdai_core::Vec2::new(150.0, 0.0),
+                heading: core::f32::consts::FRAC_PI_2,
+                speed: 10.0,
+            };
             let mut c = Controls::default();
             assert_eq!(rdai_agent_tick(a, t, &obs, core::ptr::null(), 0, 1.0 / 60.0, &mut c), 0);
             assert!(c.throttle > 0.0 && c.steer.abs() <= 1.0);
