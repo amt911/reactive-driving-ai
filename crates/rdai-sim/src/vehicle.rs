@@ -126,7 +126,11 @@ impl VehicleState {
         let throttle = c.throttle.clamp(0.0, 1.0);
         let brake = c.brake.clamp(0.0, 1.0);
         let mut fx = if c.reverse != 0 {
-            if self.vx > -6.0 { -throttle * p.max_drive_force * 0.5 } else { 0.0 }
+            if self.vx > -6.0 {
+                -throttle * p.max_drive_force * 0.5
+            } else {
+                0.0
+            }
         } else {
             throttle * p.max_drive_force.min(p.power / self.vx.max(1.0))
         };

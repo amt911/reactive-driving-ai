@@ -2,7 +2,7 @@
 //! laps and positions, plus scenario hooks (a car crashing ahead, debris on the road).
 
 use rdai_core::{
-    Agent, AgentConfig, Controls, DriverProfile, LineParams, Obstacle, Observation, PlannerParams, RacingLine, Track,
+    Agent, AgentConfig, Controls, DriverProfile, LineParams, Observation, Obstacle, PlannerParams, RacingLine, Track,
     TrackPoint, Vec2,
 };
 
@@ -73,7 +73,11 @@ impl World {
     pub fn new(control: &[TrackPoint], specs: &[CarSpec], laps: i32) -> World {
         let track = Track::from_control_points(control, 2.0).expect("valid track");
         let params = specs.first().map(|s| s.params).unwrap_or_default();
-        let line = RacingLine::build(&track, &LineParams { margin: 0.5 * params.width + 1.0, ..Default::default() }, &params.limits());
+        let line = RacingLine::build(
+            &track,
+            &LineParams { margin: 0.5 * params.width + 1.0, ..Default::default() },
+            &params.limits(),
+        );
         let mut w = World {
             cars: Vec::new(),
             debris: Vec::new(),

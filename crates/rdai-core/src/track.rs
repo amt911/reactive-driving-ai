@@ -54,7 +54,7 @@ impl Track {
         if control.len() < 4 {
             return Err(TrackError::TooFewPoints);
         }
-        if !(spacing > 0.05) {
+        if spacing.is_nan() || spacing <= 0.05 {
             return Err(TrackError::BadSpacing);
         }
         if control.iter().any(|p| !(p.width_left > 0.0 && p.width_right > 0.0)) {
@@ -123,9 +123,7 @@ impl Track {
         for i in 0..n {
             length += (pts[(i + 1) % n] - pts[i]).length();
         }
-        let tangents = (0..n)
-            .map(|i| (pts[(i + 1) % n] - pts[(i + n - 1) % n]).normalized())
-            .collect();
+        let tangents = (0..n).map(|i| (pts[(i + 1) % n] - pts[(i + n - 1) % n]).normalized()).collect();
         Track { spacing: length / n as f32, pts, tangents, width_left, width_right, length }
     }
 

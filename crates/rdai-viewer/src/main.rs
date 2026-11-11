@@ -20,7 +20,13 @@ fn new_world(track_seed: Option<u64>) -> World {
 }
 
 fn window_conf() -> Conf {
-    Conf { window_title: "reactive-driving-ai".into(), window_width: 1280, window_height: 800, high_dpi: true, ..Default::default() }
+    Conf {
+        window_title: "reactive-driving-ai".into(),
+        window_width: 1280,
+        window_height: 800,
+        high_dpi: true,
+        ..Default::default()
+    }
 }
 
 #[macroquad::main(window_conf)]
@@ -78,7 +84,13 @@ async fn main() {
             track_seed = None;
             w = new_world(track_seed);
         }
-        let da = if is_key_pressed(KeyCode::A) { 0.1 } else if is_key_pressed(KeyCode::Z) { -0.1 } else { 0.0 };
+        let da = if is_key_pressed(KeyCode::A) {
+            0.1
+        } else if is_key_pressed(KeyCode::Z) {
+            -0.1
+        } else {
+            0.0
+        };
         if da != 0.0 {
             let d = &mut w.cars[selected].agent.driver;
             d.profile.aggression = (d.profile.aggression + da).clamp(0.0, 1.0);
@@ -115,8 +127,14 @@ async fn main() {
         let n = w.track.len();
         for i in 0..n {
             let j = (i + 1) % n;
-            let (a1, a2) = (w.track.to_world(i as f32 * w.track.spacing(), w.track.width_left(i)), w.track.to_world(i as f32 * w.track.spacing(), -w.track.width_right(i)));
-            let (b1, b2) = (w.track.to_world(j as f32 * w.track.spacing(), w.track.width_left(j)), w.track.to_world(j as f32 * w.track.spacing(), -w.track.width_right(j)));
+            let (a1, a2) = (
+                w.track.to_world(i as f32 * w.track.spacing(), w.track.width_left(i)),
+                w.track.to_world(i as f32 * w.track.spacing(), -w.track.width_right(i)),
+            );
+            let (b1, b2) = (
+                w.track.to_world(j as f32 * w.track.spacing(), w.track.width_left(j)),
+                w.track.to_world(j as f32 * w.track.spacing(), -w.track.width_right(j)),
+            );
             let asphalt = Color::from_rgba(70, 70, 76, 255);
             draw_triangle(to_s(a1), to_s(a2), to_s(b1), asphalt);
             draw_triangle(to_s(a2), to_s(b2), to_s(b1), asphalt);
@@ -147,7 +165,17 @@ async fn main() {
             let p = to_s(c.state.position);
             let len = (c.params.length * zoom).max(6.0);
             let wid = (c.params.width * zoom).max(3.0);
-            draw_rectangle_ex(p.x, p.y, len, wid, DrawRectangleParams { offset: vec2(0.5, 0.5), rotation: -c.state.heading, color: palette[i % palette.len()] });
+            draw_rectangle_ex(
+                p.x,
+                p.y,
+                len,
+                wid,
+                DrawRectangleParams {
+                    offset: vec2(0.5, 0.5),
+                    rotation: -c.state.heading,
+                    color: palette[i % palette.len()],
+                },
+            );
             if i == selected {
                 draw_circle_lines(p.x, p.y, len * 0.8, 2.0, WHITE);
             }
@@ -159,18 +187,49 @@ async fn main() {
         // HUD.
         let modes = ["cruise", "follow", "avoid", "EMERGENCY"];
         draw_rectangle(8.0, 8.0, 330.0, 40.0 + 20.0 * w.cars.len() as f32 + 120.0, Color::new(0.0, 0.0, 0.0, 0.6));
-        draw_text(&format!("t {:.1}s  x{}  {}", w.time, sim_speed, if paused { "PAUSED" } else { "" }), 16.0, 30.0, 22.0, WHITE);
+        draw_text(
+            format!("t {:.1}s  x{}  {}", w.time, sim_speed, if paused { "PAUSED" } else { "" }),
+            16.0,
+            30.0,
+            22.0,
+            WHITE,
+        );
         for (k, &i) in w.positions().iter().enumerate() {
             let c = &w.cars[i];
-            let txt = format!("{:>2}. {:<7} L{} {:>5.0} km/h {}", k + 1, c.name, c.lap.max(0), c.state.vx * 3.6, modes[c.controls.mode as usize % 4]);
+            let txt = format!(
+                "{:>2}. {:<7} L{} {:>5.0} km/h {}",
+                k + 1,
+                c.name,
+                c.lap.max(0),
+                c.state.vx * 3.6,
+                modes[c.controls.mode as usize % 4]
+            );
             draw_text(&txt, 16.0, 54.0 + 20.0 * k as f32, 20.0, if i == selected { YELLOW } else { WHITE });
         }
         let c = &w.cars[selected];
         let p = c.agent.driver.profile;
         let y0 = 64.0 + 20.0 * w.cars.len() as f32;
-        draw_text(&format!("{}  exp {:.2}  stamina {:.2}  aggr {:.2}", c.name, p.experience, p.stamina, p.aggression), 16.0, y0, 20.0, YELLOW);
-        draw_text(&format!("walls {}  contacts {}  overtakes {}", c.wall_hits, c.contacts, w.overtakes), 16.0, y0 + 20.0, 20.0, WHITE);
-        draw_text(&format!("AI {:.1} us/tick", w.agent_ns as f64 / w.agent_calls.max(1) as f64 / 1e3), 16.0, y0 + 40.0, 20.0, WHITE);
+        draw_text(
+            format!("{}  exp {:.2}  stamina {:.2}  aggr {:.2}", c.name, p.experience, p.stamina, p.aggression),
+            16.0,
+            y0,
+            20.0,
+            YELLOW,
+        );
+        draw_text(
+            format!("walls {}  contacts {}  overtakes {}", c.wall_hits, c.contacts, w.overtakes),
+            16.0,
+            y0 + 20.0,
+            20.0,
+            WHITE,
+        );
+        draw_text(
+            format!("AI {:.1} us/tick", w.agent_ns as f64 / w.agent_calls.max(1) as f64 / 1e3),
+            16.0,
+            y0 + 40.0,
+            20.0,
+            WHITE,
+        );
         draw_text("Space pause  Up/Down speed  Tab car  F follow  P plans", 16.0, y0 + 64.0, 16.0, LIGHTGRAY);
         draw_text("K crash  O debris  A/Z aggression  R restart  N new track  B default", 16.0, y0 + 82.0, 16.0, LIGHTGRAY);
 

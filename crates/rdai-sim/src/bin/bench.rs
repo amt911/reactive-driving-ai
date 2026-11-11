@@ -33,7 +33,14 @@ fn main() {
         use std::io::Write;
         let mut f = std::io::BufWriter::new(std::fs::File::create(path).expect("line file"));
         for i in 0..w.track.len() {
-            let _ = writeln!(f, "{:.1},{:.3},{:.5},{:.2}", i as f32 * w.track.spacing(), w.line.offset[i], w.line.curvature[i], w.line.speed[i]);
+            let _ = writeln!(
+                f,
+                "{:.1},{:.3},{:.5},{:.2}",
+                i as f32 * w.track.spacing(),
+                w.line.offset[i],
+                w.line.curvature[i],
+                w.line.speed[i]
+            );
         }
     }
 
@@ -46,7 +53,7 @@ fn main() {
     while !w.finished() && w.time < 60.0 * 30.0 {
         w.step(dt);
         steps += 1;
-        if let (Some(f), true) = (trace.as_mut(), steps % 12 == 0) {
+        if let (Some(f), true) = (trace.as_mut(), steps.is_multiple_of(12)) {
             use std::io::Write;
             let c = &w.cars[0];
             let pr = w.track.project(c.state.position, None);
