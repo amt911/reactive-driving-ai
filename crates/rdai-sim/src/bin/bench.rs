@@ -1,6 +1,6 @@
 //! Headless race / scenario runner. Prints results and the AI's cost per tick.
 //!
-//! cargo run --release -p rdai-sim --bin bench -- [--cars N] [--laps L] [--track default|oval|FILE.csv]
+//! cargo run --release -p rdai-sim --bin bench -- [--cars N] [--laps L] [--track default|oval|proc:SEED|FILE.csv]
 //!     [--scenario race|crash|debris]
 
 use rdai_sim::{default_field, tracks, World};
@@ -14,6 +14,7 @@ fn main() {
     let track = match get("--track").as_deref() {
         None | Some("default") => tracks::default_circuit(),
         Some("oval") => tracks::test_oval(),
+        Some(p) if p.starts_with("proc:") => tracks::procedural(p[5..].parse().expect("proc:SEED")),
         Some(path) => tracks::parse_csv(&std::fs::read_to_string(path).expect("read track")).expect("parse track"),
     };
 

@@ -2,14 +2,17 @@
 //!
 //! Keys: Space pause · Up/Down sim speed · Tab next car · F follow camera · P show plans
 //!       K crash the selected car · O drop debris ahead of it · A/Z aggression +/- · R restart
+//!       N new procedural circuit (B back to the default one)
 //! Mouse: wheel zoom, right-drag pan.
 
 use macroquad::prelude::*;
 use rdai_core::Vec2 as V;
 use rdai_sim::{default_field, tracks, World};
 
-fn new_world() -> World {
-    let mut w = World::new(&tracks::default_circuit(), &default_field(8), 5);
+/// `track_seed`: `None` = the default circuit, `Some(seed)` = `tracks::procedural(seed)`.
+fn new_world(track_seed: Option<u64>) -> World {
+    let pts = track_seed.map(tracks::procedural).unwrap_or_else(tracks::default_circuit);
+    let mut w = World::new(&pts, &default_field(8), 5);
     for c in &mut w.cars {
         c.agent.set_debug(true);
     }
@@ -22,7 +25,8 @@ fn window_conf() -> Conf {
 
 #[macroquad::main(window_conf)]
 async fn main() {
-    let mut w = new_world();
+    let mut track_seed: Option<u64> = None;
+    let mut w = new_world(track_seed);
     let mut sim_speed = 1.0f32;
     let mut paused = false;
     let mut selected = 0usize;
@@ -64,7 +68,15 @@ async fn main() {
             w.drop_debris(selected, 80.0, d, 1.2);
         }
         if is_key_pressed(KeyCode::R) {
-            w = new_world();
+            w = new_world(track_seed);
+        }
+        if is_key_pressed(KeyCode::N) {
+            track_seed = Some(track_seed.map_or(1, |s| s + 1));
+            w = new_world(track_seed);
+        }
+        if is_key_pressed(KeyCode::B) {
+            track_seed = None;
+            w = new_world(track_seed);
         }
         let da = if is_key_pressed(KeyCode::A) { 0.1 } else if is_key_pressed(KeyCode::Z) { -0.1 } else { 0.0 };
         if da != 0.0 {
@@ -160,7 +172,7 @@ async fn main() {
         draw_text(&format!("walls {}  contacts {}  overtakes {}", c.wall_hits, c.contacts, w.overtakes), 16.0, y0 + 20.0, 20.0, WHITE);
         draw_text(&format!("AI {:.1} us/tick", w.agent_ns as f64 / w.agent_calls.max(1) as f64 / 1e3), 16.0, y0 + 40.0, 20.0, WHITE);
         draw_text("Space pause  Up/Down speed  Tab car  F follow  P plans", 16.0, y0 + 64.0, 16.0, LIGHTGRAY);
-        draw_text("K crash car  O debris  A/Z aggression  R restart  wheel zoom", 16.0, y0 + 82.0, 16.0, LIGHTGRAY);
+        draw_text("K crash  O debris  A/Z aggression  R restart  N new track  B default", 16.0, y0 + 82.0, 16.0, LIGHTGRAY);
 
         next_frame().await
     }
