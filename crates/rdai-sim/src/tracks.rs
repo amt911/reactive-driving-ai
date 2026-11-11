@@ -28,8 +28,16 @@ pub fn default_circuit() -> Vec<TrackPoint> {
 
 /// Rounded rectangle (~700 m), quick to run in tests.
 pub fn test_oval() -> Vec<TrackPoint> {
-    let pts: [(f32, f32); 8] =
-        [(0.0, 0.0), (200.0, 0.0), (240.0, 40.0), (240.0, 100.0), (200.0, 140.0), (0.0, 140.0), (-40.0, 100.0), (-40.0, 40.0)];
+    let pts: [(f32, f32); 8] = [
+        (0.0, 0.0),
+        (200.0, 0.0),
+        (240.0, 40.0),
+        (240.0, 100.0),
+        (200.0, 140.0),
+        (0.0, 140.0),
+        (-40.0, 100.0),
+        (-40.0, 40.0),
+    ];
     pts.iter().map(|&(x, y)| TrackPoint { x, y, width_left: 7.0, width_right: 7.0 }).collect()
 }
 

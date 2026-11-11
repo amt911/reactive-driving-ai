@@ -240,7 +240,7 @@ cargo run --release -p rdai-viewer                       # the 2D viewer (keys i
 cargo run --release -p rdai-sim --bin bench -- --cars 1 --laps 2          # baseline numbers
 cargo run --release -p rdai-sim --bin bench -- --scenario crash|debris   # reactive scenarios
 cargo run --release -p rdai-sim --bin bench -- --cars 1 --laps 2 --trace t.csv --dump-line l.csv
-cargo test --workspace --release                         # all tests (behaviour suite needs release)
+cargo test --workspace --release --no-fail-fast                       # all tests (behaviour suite needs release)
 cargo clippy --workspace --all-targets -- -D warnings    # lint (gate)
 cargo fmt --all --check                                  # format (gate)
 scripts/c-smoke.sh                                       # C ABI from a real C compiler
