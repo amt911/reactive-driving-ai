@@ -83,14 +83,27 @@ which aborts the process (Rust ≥ 1.81) and takes the game engine down.
 
 Found: 2026-11-11 · ffi · **Status: open**
 
+### A faster car does not get past slower ones
+
+**Symptom.** `crates/rdai-sim/tests/behaviour.rs::fast_car_overtakes_slower_ones`: a 430 kW / μ 1.3
+car starting a row behind two 200 kW / μ 1.1 cars finishes last (laps 75–110 s, 2 contacts, 118
+Emergency ticks). Also: a driver at 100 % grip laps no faster than one at 90 % (73–75 s both) —
+pace is set by tracking quality, not by the grip the profile allows.
+**Cause.** Not investigated yet. Note the test only became meaningful once each car class got its
+own racing line: before, every car drove car 0's speed profile (fixed in the same branch).
+**Fix.** Pending.
+
+Found: 2026-11-11 · core/planner · **Status: open**
+
 ## Findings
 
-### `bench` lap counter counts 17–21 laps in a 2-lap race after spins
+### `bench` shows 20+ laps for a 2-lap race
 
-**Symptom.** With a destabilised planner (branch `fix/planner-braking`, attempt 4) the 8-car
-`bench --laps 2` showed cars with 17–21 laps and DNFs after 1800 s. Not seen on `main`.
-**Cause.** Not investigated; likely cars spinning or reversing across the start line count a lap
-each crossing. **Fix.** Pending; a behaviour test should assert laps ≤ the race length.
+**Symptom.** `bench --laps 2` (and `scripts/eval.sh`) shows 17–21 in the *laps* column for some
+cars, with a finish time well before the end of the run.
+**Cause.** The column is `lap_times.len()`; cars keep driving after they finish and every further
+lap is appended, so a race that waits for a DNF counts dozens. Not an AI fault.
+**Fix.** Pending: stop recording laps (or park the car) once `finished_at` is set.
 
 Found: 2026-11-11 · sim
 

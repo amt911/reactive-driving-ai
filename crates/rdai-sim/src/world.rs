@@ -21,6 +21,8 @@ pub struct Car {
     pub params: VehicleParams,
     pub state: VehicleState,
     pub agent: Agent,
+    /// Index into `World::lines`: the line of this car's class.
+    pub line: usize,
     pub controls: Controls,
     pub accel: f32,
     prev_speed: f32,
@@ -53,7 +55,10 @@ pub struct Contact {
 
 pub struct World {
     pub track: Track,
+    /// Racing line of car 0's class (for drawing and tests); every car drives `lines[car.line]`.
     pub line: RacingLine,
+    /// One racing line and speed profile per distinct car class (`VehicleParams`) on the grid.
+    pub lines: Vec<RacingLine>,
     pub cars: Vec<Car>,
     pub debris: Vec<Debris>,
     pub time: f32,
@@ -72,8 +77,25 @@ pub struct World {
 impl World {
     pub fn new(control: &[TrackPoint], specs: &[CarSpec], laps: i32) -> World {
         let track = Track::from_control_points(control, 2.0).expect("valid track");
-        let params = specs.first().map(|s| s.params).unwrap_or_default();
-        let line = RacingLine::build(&track, &LineParams { margin: 0.5 * params.width + 1.0, ..Default::default() }, &params.limits());
+        // One line per car class: a weaker car must not drive a stronger car's speed profile.
+        let build = |p: &VehicleParams| {
+            RacingLine::build(&track, &LineParams { margin: 0.5 * p.width + 1.0, ..Default::default() }, &p.limits())
+        };
+        let mut classes: Vec<VehicleParams> = Vec::new();
+        let mut lines = Vec::new();
+        let mut car_line = Vec::with_capacity(specs.len());
+        for spec in specs {
+            let k = match classes.iter().position(|c| *c == spec.params) {
+                Some(k) => k,
+                None => {
+                    classes.push(spec.params);
+                    lines.push(build(&spec.params));
+                    classes.len() - 1
+                }
+            };
+            car_line.push(k);
+        }
+        let line = lines.first().cloned().unwrap_or_else(|| build(&VehicleParams::default()));
         let mut w = World {
             cars: Vec::new(),
             debris: Vec::new(),
@@ -88,6 +110,7 @@ impl World {
             agent_calls: 0,
             track,
             line,
+            lines,
         };
         for (i, spec) in specs.iter().enumerate() {
             // Two-wide grid behind the start line, 9 m between rows.
@@ -106,6 +129,7 @@ impl World {
                 params: spec.params,
                 state: VehicleState { position: pos, heading, ..Default::default() },
                 agent: Agent::new(cfg),
+                line: car_line[i],
                 controls: Controls::default(),
                 accel: 0.0,
                 prev_speed: 0.0,
@@ -197,7 +221,7 @@ impl World {
             let car = &mut self.cars[i];
             let obs = Observation { position: car.state.position, heading: car.state.heading, speed: car.state.vx };
             let t0 = std::time::Instant::now();
-            let ai = car.agent.tick(&self.track, &self.line, &obs, &self.scratch, dt);
+            let ai = car.agent.tick(&self.track, &self.lines[car.line], &obs, &self.scratch, dt);
             self.agent_ns += t0.elapsed().as_nanos();
             self.agent_calls += 1;
             car.controls = if car.disabled > 0.0 {
@@ -346,5 +370,24 @@ impl World {
             }
         }
         self.order = order;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tracks;
+
+    #[test]
+    fn each_car_class_drives_its_own_line() {
+        // A weaker car (less power, less grip) must not inherit the speed profile of the first
+        // car on the grid, and vice versa (docs/FINDINGS.md: every car used car 0's profile).
+        let slow = VehicleParams { power: 200_000.0, mu: 1.1, ..VehicleParams::default() };
+        let spec = |params| CarSpec { name: "x".into(), profile: DriverProfile::default(), params };
+        let w = World::new(&tracks::default_circuit(), &[spec(slow), spec(VehicleParams::default())], 1);
+        let (l0, l1) = (&w.lines[w.cars[0].line], &w.lines[w.cars[1].line]);
+        // Oracle: the offline speed profile of each class; the faster class has the shorter lap.
+        assert!(l1.lap_time < l0.lap_time - 1.0, "slow class {} s, fast class {} s", l0.lap_time, l1.lap_time);
+        assert_eq!(w.lines.len(), 2);
     }
 }
