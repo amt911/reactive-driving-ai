@@ -1,0 +1,14 @@
+[package]
+name = "rdai-sim"
+description = "Reference 2D vehicle physics and race world used to test rdai-core headless."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+rdai-core = { path = "../rdai-core" }
+
+[[bin]]
+name = "bench"
+path = "src/bin/bench.rs"

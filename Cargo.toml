@@ -1,0 +1,17 @@
+[workspace]
+resolver = "2"
+members = ["crates/rdai-core", "crates/rdai-sim", "crates/rdai-ffi", "crates/rdai-viewer"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/amt911/reactive-driving-ai"
+
+# Racing-line optimisation runs thousands of iterations: keep debug test runs fast.
+[profile.dev]
+opt-level = 1
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

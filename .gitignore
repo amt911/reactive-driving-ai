@@ -1,0 +1,8 @@
+/target
+*.swp
+/scratch
+/tools/src
+/papers
+/graphify-out
+# bench --trace / --dump-line output
+/*.csv

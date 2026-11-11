@@ -1,0 +1,72 @@
+# FINDINGS — reactive-driving-ai
+
+The repo's **non-obvious gotchas log** and its **open bugs**. Read it before debugging or touching
+the build; add to it whenever something cost time and is not deducible from the code. One `###`
+entry per finding, newest first: **Symptom / Cause / Fix / Why it isn't obvious**, then
+`Found: <date> · <area>`. Open bugs say **Status: open** and move to *Closed* with the PR that
+fixed them.
+
+## Open bugs
+
+### Planner `target_speed` falls faster than the car can brake in the s≈480–640 m braking zone
+
+**Symptom.** Default circuit, 1 car (`bench --cars 1 --laps 2`): in the braking zone at
+s≈480–640 m the planner's `target_speed` drops from 57 to 18 m/s in ~75 m — about 20 m/s², which no
+car can do — while the racing line's own speed in that zone only goes from 62 to 51 m/s. The car
+ends up ~10 m off the line. Baseline for the whole run: best lap **82.6 s vs 63.4 s ideal, 9 wall
+hits, ~3.5 µs/tick**.
+**Cause (suspected, not confirmed).** Step 4 of `Planner::plan` (`crates/rdai-core/src/planner.rs`)
+evaluates `kappa = line.curvature[idx] + q.second(sigma)`. When the car is displaced laterally, the
+chosen quintic's second derivative adds curvature that the speed profile never saw, the
+`sqrt(a_lat / kappa)` cap collapses, and nothing makes that cap respect the braking envelope as the
+horizon slides forward tick by tick.
+**Fix.** Pending — investigate with `bench --trace` + `--dump-line` (systematic debugging), regression
+test first.
+**Why it isn't obvious.** On the line (`e = 0`) the term vanishes and everything looks right; it only
+bites once the car is already off the line, which makes it look like a controller problem.
+
+Found: 2026-11-11 · core/planner · **Status: open**
+
+### Agent brakes in `avoid` mode at 10 m/s on an empty ellipse (FFI round-trip test fails)
+
+**Symptom.** `cargo test -p rdai-ffi` fails: `assertion failed: c.throttle > 0.0 && c.steer.abs() <= 1.0`.
+The car sits on the centreline of an ellipse (a = 150 m, b = 100 m, half-width 6 m) at 10 m/s with no
+obstacles; the agent answers `throttle 0, brake 0.41, mode 2 (avoid)`. `scripts/c-smoke.sh` prints the
+same (`steer 0.379 throttle 0.00 brake 0.41 mode 2`) but does not assert on it, so it passes. The
+corner allows ~29 m/s (κ = a/b² = 0.015 1/m, 12.7 m/s² lateral), so braking is wrong.
+**Cause.** Unknown. Likely the same family as the bug above: the car starts off the racing line
+(e₀ ≠ 0, heading error vs the line), so the quintic's curvature enters the speed cap.
+**Fix.** Pending. The test was written but never run before 2026-11-11.
+**Why it isn't obvious.** The C smoke script is green, so the ABI looked verified while the
+behaviour behind it was wrong — a check that never asserted on the result.
+
+Found: 2026-11-11 · core/planner, ffi · **Status: open**
+
+### FFI functions can unwind a panic into C
+
+**Symptom.** None seen yet. `crates/rdai-ffi/src/lib.rs` has no `catch_unwind`: a panic inside
+`Agent::tick` (e.g. an index out of range on a malformed track) would unwind across `extern "C"`,
+which aborts the process (Rust ≥ 1.81) and takes the game engine down.
+**Fix.** Pending: wrap every exported body in `std::panic::catch_unwind` and return an error code
+(AGENTS.md, Working rules).
+
+Found: 2026-11-11 · ffi · **Status: open**
+
+## Findings
+
+### crates.io downloads of large crates fail with `SSL routines::unexpected eof while reading`
+
+**Symptom.** `cargo build -p rdai-viewer` fails downloading `image-0.24.9` (8.8 MB):
+`[56] Failure when receiving data from the peer (OpenSSL SSL_read: OpenSSL/4.1.0: error:0A000126:SSL routines::unexpected eof while reading`.
+Small crates download fine and the crates.io website opens, so the network looks healthy.
+**Cause.** The connection on this machine drops long TLS streams mid-download (same error with plain
+`curl`, with and without the agent sandbox). Not a crates.io outage.
+**Fix / workaround.** Resume the download with curl and drop it in cargo's cache after checking the
+checksum from `Cargo.lock`:
+`curl -L -C - -o x.crate https://static.crates.io/crates/<name>/<ver>/download` (repeat until it
+completes), `sha256sum x.crate` = the `checksum` in `Cargo.lock`, then copy to
+`~/.cargo/registry/cache/index.crates.io-*/<name>-<ver>.crate`. `cargo fetch` then succeeds.
+**Why it isn't obvious.** cargo reports it as a "spurious network error" and retries the whole file,
+which fails the same way every time.
+
+Found: 2026-11-11 · env

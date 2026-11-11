@@ -1,0 +1,9 @@
+[package]
+name = "rdai-core"
+description = "Engine-agnostic reactive driving AI: route model, optimal line, speed profile, reactive Frenet planner with obstacle avoidance and emergency braking, controllers. No dependencies."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
