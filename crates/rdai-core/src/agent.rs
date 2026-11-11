@@ -54,6 +54,9 @@ impl Default for AgentConfig {
     }
 }
 
+/// Gap (m) kept to anything behind while reversing out of a stuck position.
+const REVERSE_CLEARANCE: f32 = 1.5;
+
 #[derive(Clone, Debug)]
 pub struct Agent {
     pub geometry: VehicleGeometry,
@@ -132,19 +135,29 @@ impl Agent {
             brake = 1.0;
         }
 
-        // Recovery: stuck with free road ahead -> reverse for a moment, steering the other way.
+        // Recovery: stuck -> reverse for a moment, steering the other way. Stuck means stopped
+        // either with free road ahead, or in Emergency (every path ahead collides: a car or debris
+        // against the nose). Before, Emergency set the target to 0, so a car stopped against an
+        // obstacle never backed off (docs/FINDINGS.md).
         let mut reverse = 0u8;
-        if self.reverse_time > 0.0 {
+        if self.reverse_time > 0.0 && self.clear_behind(obs, obstacles) {
             self.reverse_time -= dt;
             reverse = 1;
             throttle = 0.5;
             brake = 0.0;
             steer = -steer;
-        } else if obs.speed.abs() < 0.5 && plan.target_speed > 3.0 && plan.mode != Mode::Follow {
+        } else if self.reverse_time > 0.0 {
+            // Something behind: stop backing off (look in the mirror before reversing).
+            self.reverse_time = 0.0;
+            throttle = 0.0;
+            brake = 1.0;
+        } else if obs.speed.abs() < 0.5
+            && ((plan.target_speed > 3.0 && plan.mode != Mode::Follow) || plan.mode == Mode::Emergency)
+        {
             self.stuck_time += dt;
             if self.stuck_time > 2.5 {
                 self.stuck_time = 0.0;
-                self.reverse_time = 1.5;
+                self.reverse_time = 3.0;
             }
         } else {
             self.stuck_time = 0.0;
@@ -161,6 +174,20 @@ impl Agent {
     }
 
     /// Samples the last chosen path in world space (for debug drawing).
+    /// No obstacle within `REVERSE_CLEARANCE` behind the car, inside its width (car frame).
+    fn clear_behind(&self, obs: &Observation, obstacles: &[Obstacle]) -> bool {
+        let fwd = Vec2::from_angle(obs.heading);
+        let half_len = 0.5 * self.geometry.length;
+        let half_wid = 0.5 * self.geometry.width;
+        obstacles.iter().all(|o| {
+            let rel = o.position - obs.position;
+            let x = rel.dot(fwd);
+            let y = fwd.cross(rel);
+            let behind = -x - half_len - 0.5 * o.length;
+            !(x < 0.0 && behind < REVERSE_CLEARANCE && y.abs() < half_wid + 0.5 * o.width + 0.3)
+        })
+    }
+
     pub fn plan_polyline(&self, track: &Track, line: &RacingLine, out: &mut Vec<Vec2>) {
         out.clear();
         if let Some(p) = &self.last_plan {

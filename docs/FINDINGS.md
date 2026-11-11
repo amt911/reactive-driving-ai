@@ -100,6 +100,43 @@ path it braked in Emergency right in front of the overtaker.
 walls 2283 → 1261, contacts 943 → 722, after the scenario 560 → 247, DNF 20 → 3.
 
 Found: 2026-11-11 · core/planner · **Status: fixed**
+### A car touching the one in front kept accelerating into it
+
+**Symptom.** `bench --cars 10 --seed 2`: 107 consecutive contacts between the same pair; the
+follower stayed in Cruise, no brake, while the car in front braked.
+**Cause.** With the bumpers already touching, `gap0 ≤ 0` classed the car in front as "alongside";
+after the alongside rule stopped counting the lane-keeping path as a collision, nothing made the
+follower brake. **Fix.** Centre ahead and overlapping sideways = in front (regression test
+`crates/rdai-sim/tests/planner_contacts.rs`). Alone it did not help the matrix (it left cars
+stopped in Emergency); with the stuck recovery (#4) the 243-run matrix went walls 5214 → 3659,
+contacts 3066 → 2934, pile-ups 28 → 21, after the scenario 1673 → 1416, DNF 26 → 1.
+
+Found: 2026-11-11 · core/planner
+
+### Evaluation noise: one matrix of seeds is not enough
+
+The same binary moved walls 1261 → 2531 and contacts 722 → 1218 between seed sets {1,2,3} and
+{4,5,6}. `scripts/eval.sh` now sums 9 seeds (243 runs, ~6 min, 4 in parallel); differences under
+~15 % on it are still noise. Earlier claims from one seed or one 81-run matrix were corrected:
+the alongside rule is walls −22 %, contacts −8 %, after the scenario −17 %, DNF 45 → 15 on 243
+runs (not the −45 % / −23 % first reported). HDM multi-anticipation (3 leaders, 1/j² weights) and
+sorting leaders by distance were both worse on the 81-run matrix — not re-run on 243 runs.
+
+Found: 2026-11-11 · tooling
+
+### Cars stopped against an obstacle never backed off
+
+**Symptom.** In the viewer, cars that hit something sat still against it. Test
+`crates/rdai-sim/tests/recovery.rs`: debris touching the nose → stopped in Emergency for 20 s.
+**Cause.** Recovery required `target_speed > 3`, but Emergency sets the target to 0; and a 1.5 s
+reverse (~3 m) left no room to steer round (a 3.5 m sidestep needs ~10 m at the 5.6 m minimum
+turning radius), so the car looped. Reversing was also blind.
+**Fix.** Stopped in Emergency counts as stuck; reverse 3 s; stop reversing when anything is within
+1.5 m behind. Bench matrix (default seed, 45 runs) vs `main`: DNF 18 → 0, walls 7440 → 4842, but
+contacts 924 → 1272 and after the scenario 276 → 453 — partly cars that used to sit out now
+racing again; not yet separated.
+
+Found: 2026-11-11 · core/agent
 
 ## Findings
 
