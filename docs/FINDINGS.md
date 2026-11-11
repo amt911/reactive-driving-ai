@@ -15,26 +15,30 @@ s≈480–640 m the planner's `target_speed` drops from 57 to 18 m/s in ~75 m �
 car can do — while the racing line's own speed in that zone only goes from 62 to 51 m/s. The car
 ends up ~10 m off the line. Baseline for the whole run: best lap **82.6 s vs 63.4 s ideal, 9 wall
 hits, ~3.5 µs/tick**.
-**Investigation 2026-11-11 (branch `fix/planner-braking`, WIP).**
-- *Confirmed:* with `RDAI_PROBE`-style instrumentation, the line-only envelope stays at the line's
-  speed (61 → 51 m/s) while the chosen candidate's envelope falls to 17 m/s; the minimum is always
-  at the first sample (σ ≈ 11 m), where the quintic returning to the line curves hardest. The
-  candidate is chosen by lateral cost only; its speed cost is never compared.
-- *Also confirmed:* the line's own profile uses 12.2–13.4 m/s² combined in s≈490–700 against the
-  sim's μg = 12.75 — no margin, so any tracking error becomes understeer; and full braking in mid
-  corner (brake 1.0 from s≈565) saturates the sim's friction ellipse, so the car drifts out
-  while steering more (a feedback loop with the collapsing target).
-- *Tried* (`bench --cars 1 --laps 2`, baseline 82.6 s / 9 walls):
-  1. speed-loss cost per candidate (1.2 per m/s vs the line-only envelope): 101.7 s / 31 walls;
-  2. + infeasibility cost 100·(min(v, v_line) − v_path): **78.2 s / 22 walls**, regression test
-     green, FFI round trip green — faster, but more walls: the σ = 0 sample penalises the line
-     itself whenever the car is above line speed, so it drifts to flatter, outer paths;
-  3. sim: aero drag outside the tyre ellipse: 77.7 s / 29 walls — rejected;
-  4. infeasibility measured from σ > 0 against v: 84.3 s / 52 walls, 8-car race DNFs — rejected.
-- *Open question (architecture):* candidates have one fixed transition length (`v · 0.9 s`),
-  so a 2 m return always costs κ ≈ 0.004 1/m extra; Werling samples several transition times
-  and plans speed jointly. Next step proposed: sample 2–3 transition lengths per end offset and
-  give the line profile a combined-grip margin, instead of more cost weights.
+**Investigation 2026-11-11 (branch `fix/planner-braking`).**
+- *Confirmed:* the chosen candidate's envelope (line κ + the return quintic's e'') falls to 17 m/s
+  while the line allows 51–61; the minimum is at the first sample (σ ≈ 11 m). Then full braking
+  mid-corner saturates the friction ellipse and the car drifts out: a feedback loop.
+- *What fixed the driving* (bench, branch vs `main`): **temporal consistency** (the new plan starts
+  from the previous plan's lateral state while within 1 m and above 5 m/s, Werling 2010) — before,
+  every plan restarted from the measured state, so tracking errors were absorbed into the plan
+  instead of corrected — and an **edge clearance cost** (paths within 1 m of the edge cost; before,
+  end offsets reached 0.2 m from the wall at no cost). 1 car × 3 laps: 14 → 0 walls, best
+  82.6 → 70.4 s; 8 cars: 150 → 3 walls; crash: 139 → 7 walls, contacts after the crash 8 → 1;
+  debris: 144 → 5 walls, 5 → 1.
+- *Consistency must stop at low speed:* stopped, σ = 0 and a stale slope (towards debris) was
+  inherited for ever — two cars sat in Emergency behind the debris (DNF).
+- *Tried and rejected* (same bench): speed-loss cost per candidate (101.7 s / 31 walls); + an
+  infeasibility cost (78.2 s / 22 walls); aero drag outside the sim's tyre ellipse (no gain);
+  infeasibility from σ > 0 (52 walls); three fixed transition times + feasibility at line speed
+  (the return is postponed every tick: DNF); a v²·e'' lateral-acceleration cost (87 s); a
+  "gentle" transition sized to 25 % of the grip (95 s, crash scenario collapses). A 15 % grip
+  margin alone left 34 walls; a 1.5 m line margin did not help.
+- *Still open (latent):* a car that **starts** off the line, or is beyond 1 m of its previous
+  plan (spawn, after avoiding, after a hit), still gets the short return quintic and brakes hard:
+  `crates/rdai-sim/tests/planner_offset.rs` (2 m offset at s = 548 → 44 m/s target vs 58.8) and the
+  `rdai-ffi` round trip (ellipse, 10 m/s → brakes) are red. Best lap 70.4 s vs the 69.7 s
+  (ideal + 10 %) of `tests/solo_laps.rs`.
 
 **Cause (original suspicion).** Step 4 of `Planner::plan` (`crates/rdai-core/src/planner.rs`)
 evaluates `kappa = line.curvature[idx] + q.second(sigma)`. When the car is displaced laterally, the

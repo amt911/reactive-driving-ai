@@ -50,6 +50,11 @@ pub struct PlannerParams {
     pub runoff: f32,
     /// Obstacles further than this (m) are ignored.
     pub perception_range: f32,
+    /// Lateral distance (m) from the previous plan under which the new plan starts from the
+    /// previous plan's state instead of the measured one (temporal consistency, Werling 2010).
+    pub consistency_tolerance: f32,
+    /// Clearance from the track edge (m) under which a path starts to cost.
+    pub edge_margin: f32,
 }
 
 impl Default for PlannerParams {
@@ -66,6 +71,8 @@ impl Default for PlannerParams {
             standstill_gap: 2.0,
             runoff: 1.5,
             perception_range: 160.0,
+            consistency_tolerance: 1.0,
+            edge_margin: 1.0,
         }
     }
 }
@@ -113,6 +120,14 @@ impl Quintic {
         let x = s.min(self.horizon);
         let c = &self.c;
         c[0] + x * (c[1] + x * (c[2] + x * (c[3] + x * (c[4] + x * c[5]))))
+    }
+    #[inline]
+    pub fn first(&self, s: f32) -> f32 {
+        if s >= self.horizon {
+            return 0.0;
+        }
+        let c = &self.c;
+        c[1] + s * (2.0 * c[2] + s * (3.0 * c[3] + s * (4.0 * c[4] + s * 5.0 * c[5])))
     }
     #[inline]
     pub fn second(&self, s: f32) -> f32 {
@@ -198,23 +213,25 @@ impl ObsFrenet {
 }
 
 const COLLISION_COST: f32 = 1.0e4;
-/// Cost per m/s of speed a candidate gives up (behind a leader, or through its own curvature).
+/// Below this speed (m/s) every plan starts from the measured state (no temporal consistency).
+const CONSISTENCY_MIN_SPEED: f32 = 5.0;
+/// Cost per m/s of speed lost by staying behind a leader.
 const SPEED_LOSS_COST: f32 = 1.2;
-/// Cost per m/s a candidate's speed envelope falls below what the car can brake to (infeasible).
-const INFEASIBLE_COST: f32 = 100.0;
 
 /// Reusable planner (keeps buffers and the previous choice for hysteresis).
 #[derive(Clone, Debug)]
 pub struct Planner {
     pub params: PlannerParams,
     prev_delta: f32,
+    /// Previous plan (start s, lateral profile) for temporal consistency.
+    prev_plan: Option<(f32, Quintic)>,
     obstacles: Vec<ObsFrenet>,
     pub debug: Option<Vec<CandidateDebug>>,
 }
 
 impl Planner {
     pub fn new(params: PlannerParams) -> Self {
-        Planner { params, prev_delta: 0.0, obstacles: Vec::with_capacity(32), debug: None }
+        Planner { params, prev_delta: 0.0, prev_plan: None, obstacles: Vec::with_capacity(32), debug: None }
     }
 
     /// Plans one tick. `obstacles` are in world coordinates; anything out of range is ignored.
@@ -257,8 +274,23 @@ impl Planner {
         // 2. Lateral state relative to the reference line.
         let line_d = line.offset_at(track, ego.s);
         let line_slope = (line.offset_at(track, ego.s + 1.0) - line.offset_at(track, ego.s - 1.0)) * 0.5;
-        let e0 = ego.d - line_d;
-        let de0 = ego.heading_error.clamp(-1.2, 1.2).tan() - line_slope;
+        let mut e0 = ego.d - line_d;
+        let mut de0 = ego.heading_error.clamp(-1.2, 1.2).tan() - line_slope;
+        // Temporal consistency (Werling et al. 2010): while the car is close to the previous plan,
+        // start from where that plan says it should be, so tracking errors are corrected by the
+        // controller instead of being absorbed into every new plan.
+        // Only while driving: stopped, the plan never advances and a stale slope (say, towards
+        // debris) would be inherited for ever (docs/FINDINGS.md).
+        if let (Some((s_prev, q_prev)), true) = (self.prev_plan, v > CONSISTENCY_MIN_SPEED) {
+            let sigma = track.delta_s(s_prev, ego.s);
+            if sigma >= 0.0 && sigma < q_prev.horizon {
+                let e_prev = q_prev.value(sigma);
+                if (e_prev - e0).abs() < p.consistency_tolerance {
+                    e0 = e_prev;
+                    de0 = q_prev.first(sigma);
+                }
+            }
+        }
         let horizon = (v * p.horizon_time).max(p.min_horizon);
         let transition = (v * p.transition_time).max(p.min_transition).min(horizon);
         let s_end = ego.s + transition;
@@ -299,11 +331,6 @@ impl Planner {
             }
             best
         };
-        // What the line itself allows from here: the reference for each candidate's speed loss.
-        // Werling et al. 2010 cost the lateral and longitudinal parts of a trajectory together;
-        // costing only the lateral part picked "back to the line now" even when its curvature
-        // demanded braking far beyond the line's own profile (docs/FINDINGS.md).
-        let v_line = envelope(&Quintic::default(), 0.0);
 
         if let Some(dbg) = self.debug.as_mut() {
             dbg.clear();
@@ -313,15 +340,6 @@ impl Planner {
         for (ci, &delta) in deltas[..count].iter().enumerate() {
             let q = Quintic::new(e0, de0, delta, transition);
             let mut cost = drv.line_attachment * 1.0 * delta * delta + 0.25 * (delta - self.prev_delta).powi(2);
-            // Speed this path gives up against the line (same weight as speed lost behind a leader).
-            let v_path = envelope(&q, 0.0);
-            cost += SPEED_LOSS_COST * (v_line - v_path).max(0.0);
-            // Below the current speed, following this path needs more than `b_eff` of braking: the
-            // car cannot do it and would leave the path (Werling 2010 discards such candidates).
-            // A steep cost instead of a discard keeps a least-bad choice when every path is too tight.
-            // WIP (docs/FINDINGS.md): this also penalises the line itself whenever the car is above
-            // the line's speed at sigma = 0, pushing it to flatter, outer paths (more wall hits).
-            cost += INFEASIBLE_COST * (v.min(v_line) - v_path).max(0.0);
             let mut collides = false;
             let mut leader: Option<usize> = None;
             let mut v_cap = f32::INFINITY;
@@ -334,9 +352,15 @@ impl Planner {
                 cost += 40.0 * e2 * e2 * horizon / p.samples as f32;
                 // Track bounds: soft inside the run-off, prohibitive beyond it.
                 let (wl, wr) = track.widths_at(s);
-                let over = (d + half_w - wl).max(-wr - d + half_w).max(0.0);
+                let over = (d + half_w - wl).max(-wr - d + half_w);
                 if over > 0.0 {
                     cost += if over > p.runoff { COLLISION_COST } else { 200.0 * over * over };
+                }
+                // Keep clear of the edge too: a path 0.2 m from the wall turns any tracking error
+                // into a wall hit (docs/FINDINGS.md). Same shape as the margin kept from obstacles.
+                let near = over + p.edge_margin;
+                if near > 0.0 {
+                    cost += 6.0 * near * near;
                 }
                 // Obstacles.
                 let t = sigma / v.max(3.0);
@@ -396,6 +420,7 @@ impl Planner {
         }
         let (cost, q, delta, leader, collides) = best.expect("at least two candidates");
         self.prev_delta = delta;
+        self.prev_plan = Some((ego.s, q));
 
         // 4. Speed: line speed scaled by grip, path curvature, braking envelope over the horizon.
         //    Evaluated now and a short preview ahead; their difference is the feedforward
