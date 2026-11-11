@@ -1,7 +1,7 @@
 //! Headless race / scenario runner. Prints results and the AI's cost per tick.
 //!
 //! cargo run --release -p rdai-sim --bin bench -- [--cars N] [--laps L] [--track default|oval|FILE.csv]
-//!     [--scenario race|crash|debris]
+//!     [--scenario race|crash|debris] [--seed N]
 
 use rdai_sim::{default_field, tracks, World};
 
@@ -18,7 +18,8 @@ fn main() {
     };
 
     let t_build = std::time::Instant::now();
-    let mut w = World::new(&track, &default_field(cars), laps);
+    let seed: u64 = get("--seed").and_then(|v| v.parse().ok()).unwrap_or(0x5EED);
+    let mut w = World::new_seeded(&track, &default_field(cars), laps, seed);
     println!(
         "track {:.0} m, {} samples; racing line + speed profile built in {:.1} ms; ideal lap {:.2} s",
         w.track.length(),

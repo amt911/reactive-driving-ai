@@ -40,6 +40,12 @@ hits, ~3.5 µs/tick**.
   lap 87.5 s; this branch 56 / 28 / 11 / 0 / 76.0 s. A "gentle return" offered only on ticks
   without consistency and without obstacles fixed the FFI round trip and solo lap (69.9 s) but
   gave 61 / **118** / 15 / 0 / 75.7 s — rejected for the contacts.
+- *Seeds matter more than variants (2026-11-11):* `World::new_seeded` / `bench --seed N`;
+  `scripts/eval.sh` now runs 3 seeds × 5 field sizes × 3 scenarios (45 runs). Same code, 8 cars:
+  20 / 6 / 2 contacts depending on the seed. On 45 runs: `main` 6690 walls / 2140 contacts / 663
+  after the scenario / 5 DNF / 85.5 s; this branch **674 / 2050 / 932 / 10 / 75.7 s**; the
+  "gentle return" 711 / 2276 / 1050 / 11 / 75.2 s (not 4× worse: within noise). The default-seed
+  numbers above flattered car-to-car behaviour: walls improved 10×, contacts did not.
 - *Still open (latent):* a car that **starts** off the line, or is beyond 1 m of its previous
   plan (spawn, after avoiding, after a hit), still gets the short return quintic and brakes hard:
   `crates/rdai-sim/tests/planner_offset.rs` (2 m offset at s = 548 → 44 m/s target vs 58.8) and the

@@ -76,6 +76,12 @@ pub struct World {
 
 impl World {
     pub fn new(control: &[TrackPoint], specs: &[CarSpec], laps: i32) -> World {
+        World::new_seeded(control, specs, laps, 0x5EED)
+    }
+
+    /// Like [`World::new`], with the base of the agents' RNG seeds (car `i` gets `seed + i`):
+    /// the same race with different driving noise, to tell a real change from chaos.
+    pub fn new_seeded(control: &[TrackPoint], specs: &[CarSpec], laps: i32, seed: u64) -> World {
         let track = Track::from_control_points(control, 2.0).expect("valid track");
         // One line per car class: a weaker car must not drive a stronger car's speed profile.
         let build = |p: &VehicleParams| {
@@ -122,7 +128,7 @@ impl World {
                 geometry: spec.params.geometry(),
                 planner: PlannerParams { length: spec.params.length, width: spec.params.width, ..Default::default() },
                 profile: spec.profile,
-                seed: 0x5EED + i as u64,
+                seed: seed.wrapping_add(i as u64),
             };
             w.cars.push(Car {
                 name: spec.name.clone(),
