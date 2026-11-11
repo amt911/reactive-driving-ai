@@ -377,8 +377,11 @@ Exceptions (TDD not required): the viewer's drawing; spikes/exploration — but 
   already-pushed branch.
 - **Branches:** `feat/name`, `fix/description`, `chore/task`. Every change after the first commit
   goes on a branch, in its own worktree (`~/repos/worktrees/reactive-driving-ai-<topic>`), and a PR.
-- **Project override (user, 2026-11-11): pushing feature branches and opening PRs is authorized.**
-  Still forbidden in every mode: merging, pushing to `main`, force pushes. Andrés merges.
+- **Project override (user, 2026-11-11): pushing feature branches, opening PRs and merging them is
+  authorized** when the PR is good: CI green (or its only red already exists on `main`, named in
+  the PR), the agent's own review pass done and the manual test plan written. Merge with
+  `gh pr merge --merge --delete-branch` (merge commit, no squash/rebase). Still forbidden in every
+  mode: pushing to `main` directly, force pushes, rewriting `main`'s history.
 - **Every PR must include a manual test plan** — when opening a PR, add a **How to test manually**
   section describing the exact steps to exercise the change by hand. For a web page/UI, list the concrete
   routes/URLs to visit (e.g. `/dashboard/settings`), what to click or input, and the expected result.
