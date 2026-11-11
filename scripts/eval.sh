@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # usage: scripts/eval.sh [BENCH_BINARY] -> one summary line over a matrix of bench runs.
 # Single races are chaotic: one incident changes every number after it. Comparing variants on a
-# matrix (tracks x seeds x field sizes x scenarios, 81 runs) is what tells a real change from noise
+# matrix (tracks x 9 seeds x field sizes x scenarios, 243 runs; SEEDS="..." to change) is what tells a real change from noise
 # (docs/FINDINGS.md). Runs 4 at a time.
 # Prints: runs, walls, contacts capped at 50 per run (two cars stuck together count thousands of
 # contacts and would hide everything else), runs with a pile-up (> 50), contacts after the scenario
@@ -10,7 +10,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 bench=$(realpath "${1:-target/release/bench}")
-jobs=$(for track in default proc:1 proc:2; do for seed in 1 2 3; do for cars in 6 8 10; do
+jobs=$(for track in default proc:1 proc:2; do for seed in ${SEEDS:-1 2 3 4 5 6 7 8 9}; do for cars in 6 8 10; do
   for scenario in race crash debris; do echo "$track $seed $cars $scenario"; done; done; done; done)
 one() {
   read -r track seed cars scenario <<<"$1"

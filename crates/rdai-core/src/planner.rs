@@ -377,7 +377,12 @@ impl Planner {
                     if ds.abs() < reach_s && clearance < drv.lateral_margin * 0.5 {
                         // Contact: classify by where the obstacle is now.
                         let gap0 = track.delta_s(ego.s, o.s) - 0.5 * p.length - o.half_len;
-                        if gap0 > 0.0 {
+                        // In front also when already touching: centre ahead and overlapping
+                        // sideways. Classed "alongside", a car rear-ending another kept accelerating
+                        // into it (docs/FINDINGS.md).
+                        let in_front = track.delta_s(ego.s, o.s) > 0.0 && (ego.d - o.d).abs() < half_w + o.half_wid;
+                        if gap0 > 0.0 || in_front {
+                            let gap0 = gap0.max(0.0);
                             // Ahead of us: survivable only if we can stop behind where it ends up.
                             let room = gap0 - p.standstill_gap + o.stopping_distance();
                             let need = v * v / (2.0 * b_eff);
