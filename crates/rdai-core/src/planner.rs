@@ -52,6 +52,10 @@ pub struct PlannerParams {
     pub perception_range: f32,
     /// Lateral distance (m) from the previous plan under which the new plan starts from the
     /// previous plan's state instead of the measured one (temporal consistency, Werling 2010).
+    /// Above the local line's `stitch_tol` (1.5 m): a car alone further off has its line re-pinned
+    /// at it, so the planner's short return from the measured offset — whose curvature crushes the
+    /// target — is left to traffic. At 1.0, ~1 m of tracking error in a fast sweep sent a car into
+    /// the wall every second flying lap (proc:4, `tests/flying_laps.rs`).
     pub consistency_tolerance: f32,
     /// Clearance from the track edge (m) under which a path starts to cost.
     pub edge_margin: f32,
@@ -71,7 +75,7 @@ impl Default for PlannerParams {
             standstill_gap: 2.0,
             runoff: 1.5,
             perception_range: 160.0,
-            consistency_tolerance: 1.0,
+            consistency_tolerance: 1.6,
             edge_margin: 1.0,
         }
     }

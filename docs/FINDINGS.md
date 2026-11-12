@@ -291,3 +291,11 @@ the default circuit, solo, 3 laps (best lap; ideal 63.23 s):
   as aligned with the track (half width 1.0 m); a car spun across it reaches 2.25 m to each side, and
   followers in the crash journey brushed it at 3.2 m lateral distance. `frenet_extent` boxes the
   rotated rectangle. Matrix (243 runs): contacts after the scenario 960 -> 770, walls 1650 -> 1468.
+- **Flying laps, proc:4 (2026-11-12):** two bugs behind one wall, every second lap. (1) Each window's
+  two samples behind its start were extended straight *in offset*; the window's curvature is the
+  plan's plus e'', so where the plan bends sideways that read as a false 0.0025 1/m kink under the
+  car and the target fell 69 -> 58 m/s. They now continue the *deviation* from the plan. (2) With
+  that fixed, ~1 m of tracking error at 66 m/s broke temporal consistency (1.0 m) and the planner's
+  short return from the measured offset cut the target 67 -> 51 m/s: flat-out braking mid-corner,
+  wide, wall. `consistency_tolerance` is now 1.6 m, above the local line's 1.5 m stitch tolerance:
+  alone, the line re-pins at the car before the planner would return on its own.
