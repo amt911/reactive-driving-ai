@@ -7,7 +7,13 @@
 //!
 //! Sabotage seen failing: on `main` (before the fix) the planner always returns towards the line
 //! along the shortest quintic, whose extra curvature collapsed the target to ~37 m/s at s = 590
-//! with a 4 m offset, against a line speed of ~57 m/s.
+//! with a 4 m offset, against a line speed of ~57 m/s. On the own-line agent: with
+//! `LocalParams::relative_weight` 0 (pure minimum curvature from the car) s = 590 asks 44.4 m/s
+//! against 52.0.
+//!
+//! The deepest case is 4.5 m off (1.9 m from the wall), not the trace's 6 m: at 6 m the car is
+//! 0.36 m from the wall, inside the planner's edge clearance, and moving away from the wall in the
+//! corner rightly costs speed (89 % of the line's; decided with Andrés, 2026-11-12).
 
 use rdai_core::Observation;
 use rdai_sim::{default_field, tracks, World};
@@ -38,7 +44,7 @@ fn target_beside_line(w: &World, s: f32, offset: f32, speed: f32) -> (f32, f32) 
 fn offset_car_keeps_close_to_line_speed_in_a_braking_zone() {
     let w = World::new(&tracks::default_circuit(), &default_field(1), 1);
     // The zone of the bug (s ≈ 480–640 m), at the speeds and offsets the trace showed.
-    for &(s, offset, speed) in &[(548.0, -2.0, 59.8), (575.0, -3.0, 54.0), (590.0, -4.0, 50.0), (610.0, -6.0, 44.0)] {
+    for &(s, offset, speed) in &[(548.0, -2.0, 59.8), (575.0, -3.0, 54.0), (590.0, -4.0, 50.0), (610.0, -4.5, 44.0)] {
         let (target, oracle) = target_beside_line(&w, s, offset, speed);
         // 10 %: a parallel path at these offsets needs < 3 % more curvature (κ ≤ 0.0042 1/m,
         // |d| ≤ 6 m), and the 0.9 braking margin of the planner costs a little more.
