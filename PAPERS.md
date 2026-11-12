@@ -21,12 +21,6 @@ para esos casos. Por orden de utilidad:
 
 Déjalos en `papers/` (local, no se sube).
 
-## 2026-11-11 — Werling 2010, Treiber 2000, Heilmeier 2019 (cerrado 2026-11-12)
-
-Llegaron los tres y están verificados en la bibliografía. Pendiente aparte, sin papers: comparar la
-trazada con el código de TUMFTM (`global_racetrajectory_optimization`) en un circuito de
-`racetrack-database`.
-
 ## 2026-11-12 16:48 — aprendizaje del agarre vuelta a vuelta (fase 2, `learning.rs`)
 
 El aprendizaje funciona (coche con 10 % menos de agarre: golpea solo en la vuelta 1), pero la
@@ -54,6 +48,12 @@ zona que escala a la vez la aceleración longitudinal y la lateral, afinado iter
 los errores de control se repiten, se sube donde sobra neumático). Lo ajustan entre sesiones, así
 que tampoco dan una ganancia: la de `learning.rs` sigue siendo una medida. Verificadas además
 Braghin, Velenis, Mayne, Nocedal, ForzaETH, GripMap y A2RL. Después llegaron también Coulter 1992, Kapania & Gerdes 2015 (*VSD*, el del *feedforward*, no el de ILC) y Kapania 2016: verificados.
+
+## 2026-11-11 — Werling 2010, Treiber 2000, Heilmeier 2019 (cerrado 2026-11-12)
+
+Llegaron los tres y están verificados en la bibliografía. Pendiente aparte, sin papers: comparar la
+trazada con el código de TUMFTM (`global_racetrajectory_optimization`) en un circuito de
+`racetrack-database`.
 
 # Fuentes
 
