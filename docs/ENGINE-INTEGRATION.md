@@ -21,9 +21,14 @@ Una vez por coche:
 
 En cada tick y para cada coche:
 
-3. `rdai_agent_tick(agente, circuito, &observacion, obstaculos, n, dt, &controles)` devuelve 0 si
-   todo fue bien y un valor negativo si algún argumento no es válido (por ejemplo, `obstaculos`
-   nulo con `n > 0`). El motor aplica los `controles` a su propio modelo de vehículo.
+3. `rdai_agent_tick(agente, circuito, &observacion, obstaculos, n, dt, &controles)` devuelve:
+   - 0 si todo fue bien;
+   - -1 si algún argumento es nulo o no es finito (por ejemplo, `obstaculos` nulo con `n > 0`, o
+     una posición NaN tras una explosión de la física). En ese caso `controles` no se toca;
+   - -2 si hubo un error interno. El estado del agente queda indefinido: libéralo y crea otro.
+
+   Ningún error llega a C como un pánico de Rust, así que el juego sigue en marcha. El motor aplica
+   los `controles` a su propio modelo de vehículo.
 
 Al terminar, `rdai_agent_free` y `rdai_track_free`. Comprueba `rdai_abi_version()` al cargar la
 biblioteca: si no coincide con `RDAI_ABI_VERSION`, la cabecera y la biblioteca no son de la misma

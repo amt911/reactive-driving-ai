@@ -48,13 +48,16 @@ Found: 2026-11-11 · core/planner, ffi · **Status: FFI test split (2026-11-12);
 
 ### FFI functions can unwind a panic into C
 
-**Symptom.** None seen yet. `crates/rdai-ffi/src/lib.rs` has no `catch_unwind`: a panic inside
-`Agent::tick` (e.g. an index out of range on a malformed track) would unwind across `extern "C"`,
-which aborts the process (Rust ≥ 1.81) and takes the game engine down.
-**Fix.** Pending: wrap every exported body in `std::panic::catch_unwind` and return an error code
-(AGENTS.md, Working rules).
+**Symptom.** Seen 2026-11-12: an observation with a NaN position (what a physics explosion hands
+the AI) panics in the core (`f32::clamp` with NaN bounds), the panic cannot unwind across
+`extern "C"`, and the process aborts ("panic in a function that cannot unwind") — the game with it.
+**Fix.** Non-finite observations, obstacles, `dt` and control points are refused at the boundary
+(-1 / null), and every export runs inside `guard` (`catch_unwind` -> -2 / null / NaN). Null
+handles are refused instead of dereferenced. Tests in `crates/rdai-ffi/src/lib.rs`.
+**Why it isn't obvious.** Nothing in the sim ever sends NaN, so no behaviour test sees it; only a
+host does.
 
-Found: 2026-11-11 · ffi · **Status: open**
+Found: 2026-11-11 · ffi · **Status: fixed (2026-11-12)**
 
 ### Cars stopped against an obstacle never backed off
 
