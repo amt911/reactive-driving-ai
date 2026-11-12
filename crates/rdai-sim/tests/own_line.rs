@@ -10,7 +10,8 @@
 //! computed before any agent drives; the centreline's own ideal lap shows the margin.
 //!
 //! Sabotage seen failing: the agent's lap plan set to the centreline (`LocalLine::new`, plan =
-//! `RacingLine::from_offsets(track, vec![0.0; n], limits)`) -> see the PR.
+//! `RacingLine::from_offsets(track, vec![0.0; n], limits)`) -> best lap 68.93 s vs 63.23 ideal
+//! (9.0 %): the 200 m window alone, joined to the centreline, does not find the line.
 
 use rdai_core::RacingLine;
 use rdai_sim::{default_field, tracks, World};
@@ -35,6 +36,7 @@ fn agent_laps_on_its_own_line_when_handed_the_centreline() {
     assert_eq!(car.lap_times.len(), LAPS as usize, "laps completed: {:?}", car.lap_times);
     assert_eq!(car.wall_hits, 0, "wall hits; laps {:?}", car.lap_times);
     let best = car.lap_times.iter().copied().fold(f32::INFINITY, f32::min);
-    // Same 10 % as solo_laps; the centreline's ideal is far slower (printed on failure).
-    assert!(best <= 1.10 * ideal, "best lap {best:.2} s vs ideal {ideal:.2} s (centreline ideal {centre_lap:.2} s)");
+    // 5 %: ~2 % from the grip the driver uses (sqrt of ~96 %), the rest tracking. Measured 65.33 s
+    // vs 63.23 ideal (3.3 %); with the sabotage below 68.93 s (9.0 %).
+    assert!(best <= 1.05 * ideal, "best lap {best:.2} s vs ideal {ideal:.2} s (centreline ideal {centre_lap:.2} s)");
 }
