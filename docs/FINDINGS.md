@@ -306,9 +306,16 @@ the default circuit, solo, 3 laps (best lap; ideal 63.23 s):
   evidence of their own): longer reverses when stuck again in the same place, and a cost for
   passing an obstacle on the other side from the last plan (the choice flipped every tick at
   walking pace). Also: `consistency_tolerance` 1.6 for every car cost 9 DNFs and +3.8 s of mean
-  lap in traffic; it is 1.6 only when the car is alone.
+  lap in traffic; it is 1.6 only when the car is alone. Straightening on *every* reverse touched
+  walls round debris (slow wall hits on 18 debris races 7 on main -> 39); now the first reverse
+  mirrors as before and only a second one at the same place straightens (12).
 - **Open (2026-11-12): walls in traffic after the window-start fix.** The false kink made cars
   slower into some braking zones; without it, a car that brakes flat out in `Avoid` (an obstacle
   past `RESTART_CLEARANCE`) slides wide, counts as alone, and the local line re-pins at it every
-  tick: the line follows the car to the wall (default seed 2, 10 cars, debris: s 459-583). Trail
-  braking in `Avoid` too was far worse (pile-ups 11 -> 53).
+  tick: the line follows the car to the wall (default seed 2, 10 cars, debris: s 459-583). By
+  mode (`bench` prints wall hits by planner mode and speed band): the rise is in `Avoid` at 5-30
+  m/s on debris races (68 -> 131 on 18 races). Tried, all no better on the 243-run matrix (walls /
+  contacts / pile-ups / lap, against 1600 / 1967 / 13 / 55.47 s): trail braking in `Avoid` too
+  (3171 / 4562 / 53); a 1 s hold between re-pins (1963 / 1697 / 12 / 55.42); `RESTART_CLEARANCE`
+  120 m (1988 / 2115 / 17 / 57.13); re-pinning only once the car's course runs along the line
+  (1817 / 1811 / 11 / 56.16: fewer fast walls, more slow ones).
