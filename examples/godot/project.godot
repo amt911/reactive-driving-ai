@@ -1,0 +1,5 @@
+; Minimal project for the rdai GDExtension smoke test (scripts/godot-smoke.sh).
+config_version=5
+
+[application]
+config/name="rdai smoke"

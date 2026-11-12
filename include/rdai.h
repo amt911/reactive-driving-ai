@@ -32,11 +32,14 @@ uint32_t rdai_abi_version(void);
 RdaiTrack *rdai_track_new(const RdaiTrackPoint *points, size_t n, float spacing, float edge_margin,
                           const RdaiVehicleLimits *limits);
 void rdai_track_free(RdaiTrack *t);
-float rdai_track_length(const RdaiTrack *t);
-float rdai_track_ideal_lap(const RdaiTrack *t);
+float rdai_track_length(const RdaiTrack *t);    /* NaN for a null handle */
+float rdai_track_ideal_lap(const RdaiTrack *t); /* NaN for a null handle */
 size_t rdai_track_racing_line(const RdaiTrack *t, RdaiVec2 *out, size_t cap);
 RdaiAgent *rdai_agent_new(const RdaiVehicleGeometry *g, const RdaiDriverProfile *p, uint64_t seed);
 void rdai_agent_free(RdaiAgent *a);
+/* Returns 0 on success, -1 on a null or non-finite argument (observation, obstacle, dt),
+ * -2 on an internal error (the agent's state is then unspecified: free it and create another).
+ * No export lets a Rust panic reach C; a library built with panic = "abort" would lose that. */
 int rdai_agent_tick(RdaiAgent *a, const RdaiTrack *t, const RdaiObservation *obs,
                     const RdaiObstacle *obstacles, size_t n_obstacles, float dt, RdaiControls *out);
 void rdai_agent_get_profile(const RdaiAgent *a, RdaiDriverProfile *out);

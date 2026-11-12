@@ -129,21 +129,28 @@ same (`steer 0.379 throttle 0.00 brake 0.41 mode 2`) but does not assert on it, 
 corner allows ~29 m/s (κ = a/b² = 0.015 1/m, 12.7 m/s² lateral), so braking is wrong.
 **Cause.** Unknown. Likely the same family as the bug above: the car starts off the racing line
 (e₀ ≠ 0, heading error vs the line), so the quintic's curvature enters the speed cap.
-**Fix.** Pending. The test was written but never run before 2026-11-11.
+**Fix.** Pending for the driving part, tracked by `crates/rdai-sim/tests/planner_offset.rs` (a car
+off the line gets a hard return; branch `fix/planner-braking`). The FFI test now checks only the ABI
+contract (2026-11-12): return codes, `out` written (NaN sentinels), steer in [-1, 1], throttle and
+brake in [0, 1]. Sabotage seen failing: `rdai_agent_tick` not writing `out` -> `steer NaN`.
+The test was written but never run before 2026-11-11.
 **Why it isn't obvious.** The C smoke script is green, so the ABI looked verified while the
 behaviour behind it was wrong — a check that never asserted on the result.
 
-Found: 2026-11-11 · core/planner, ffi · **Status: open**
+Found: 2026-11-11 · core/planner, ffi · **Status: FFI test split (2026-11-12); planner part open**
 
 ### FFI functions can unwind a panic into C
 
-**Symptom.** None seen yet. `crates/rdai-ffi/src/lib.rs` has no `catch_unwind`: a panic inside
-`Agent::tick` (e.g. an index out of range on a malformed track) would unwind across `extern "C"`,
-which aborts the process (Rust ≥ 1.81) and takes the game engine down.
-**Fix.** Pending: wrap every exported body in `std::panic::catch_unwind` and return an error code
-(AGENTS.md, Working rules).
+**Symptom.** Seen 2026-11-12: an observation with a NaN position (what a physics explosion hands
+the AI) panics in the core (`f32::clamp` with NaN bounds), the panic cannot unwind across
+`extern "C"`, and the process aborts ("panic in a function that cannot unwind") — the game with it.
+**Fix.** Non-finite observations, obstacles, `dt` and control points are refused at the boundary
+(-1 / null), and every export runs inside `guard` (`catch_unwind` -> -2 / null / NaN). Null
+handles are refused instead of dereferenced. Tests in `crates/rdai-ffi/src/lib.rs`.
+**Why it isn't obvious.** Nothing in the sim ever sends NaN, so no behaviour test sees it; only a
+host does.
 
-Found: 2026-11-11 · ffi · **Status: open**
+Found: 2026-11-11 · ffi · **Status: fixed (2026-11-12)**
 
 ### A faster car did not get past slower ones (fixed on `fix/planner-braking`)
 
@@ -211,6 +218,20 @@ lap is appended, so a race that waits for a DNF counts dozens. Not an AI fault.
 **Fix.** Pending: stop recording laps (or park the car) once `finished_at` is set.
 
 Found: 2026-11-11 · sim
+
+### `godot --headless --import` dumps core on exit with a GDExtension loaded
+
+**Symptom.** Godot 4.7.2 (Arch): `godot --headless --path examples/godot --import` does the import
+(writes `.godot/extension_list.cfg`), then exits 134 (SIGABRT). Without `rdai.gdextension` in the
+project it exits 0. The backtrace (`coredumpctl info`) has no frame in `librdai_godot.so`: a
+segfault inside Godot during editor shutdown, turned into abort by Godot's handler.
+**Workaround.** The extension does not need the editor: `scripts/godot-smoke.sh` writes
+`.godot/extension_list.cfg` (one line, `res://rdai.gdextension`) and runs the script directly;
+that run exits 0.
+**Why it isn't obvious.** The import looks like the required first step, and the abort comes after
+it has already done its work.
+
+Found: 2026-11-12 · godot · **Status: worked around**
 
 ### crates.io downloads of large crates fail with `SSL routines::unexpected eof while reading`
 

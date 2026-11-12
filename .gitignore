@@ -6,3 +6,4 @@
 /graphify-out
 # bench --trace / --dump-line output
 /*.csv
+examples/godot/.godot/
