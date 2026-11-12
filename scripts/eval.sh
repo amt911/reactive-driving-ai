@@ -26,6 +26,6 @@ results=$(xargs -P 4 -I{} bash -c 'one "$@"' _ {} <<<"$jobs")
 if grep -q '^BAD' <<<"$results"; then grep '^BAD' <<<"$results" >&2; exit 1; fi
 # The 5 runs with most wall hits (walls are not capped: one car stuck scraping a wall can carry
 # the total), then the summary on the last line.
-sort -k2,2nr <<<"$results" | head -5 | awk '{print "top walls:", $2, "contacts:", $3, "run:", $8, $9, $10, $11}'
+sort -k2,2nr <<<"$results" | awk 'NR <= 5 {print "top walls:", $2, "contacts:", $3, "run:", $8, $9, $10, $11}'
 awk '{runs++; w+=$2; c+=($3>50?50:$3); pile+=($3>50); a+=($4>50?50:$4); d+=$5; l+=$6; n+=$7}
   END{printf "runs %d walls %d contacts %d pileups %d after_scenario %d dnf %d mean_best_lap %.2f\n", runs, w, c, pile, a, d, (n?l/n:0)}' <<<"$results"
