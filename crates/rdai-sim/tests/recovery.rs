@@ -61,7 +61,8 @@ fn reversing_never_backs_into_the_car_behind() {
 /// (proc:1 seed 5, 10 cars, debris). Backing off with the forward steering mirrored put its tail
 /// into the wall, where it pushed for the whole reverse, then drove back into the same gap, for
 /// ever. Within 40 s it must be 10 m past the debris.
-/// Sabotage seen failing: reverse steering back to `steer = -steer` -> still wedged, ds -9 m.
+/// Sabotage seen failing: reverse steering always mirrored (`stuck_at` never counted) -> still
+/// wedged, ds -9 m.
 #[test]
 fn car_wedged_between_debris_and_wall_gets_out() {
     let mut w = World::new(&tracks::default_circuit(), &default_field(1), 1);
