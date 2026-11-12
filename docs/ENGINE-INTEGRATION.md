@@ -104,8 +104,14 @@ registra dos clases. Funciona con Godot 4.2 o posterior (probado con 4.7.2).
 - **`RdaiTrack`** (`RefCounted`): `meters_per_unit` (1.0 en un juego 3D en metros; 0.05 si 20 px son
   un metro), `build(centro: PackedVector2Array, ancho_izq: PackedFloat32Array, ancho_der:
   PackedFloat32Array) -> bool`, `ideal_lap() -> float` y `racing_line() -> PackedVector2Array` (para
-  dibujarla). Se construye una vez y lo comparten todos los coches.
-- **`RdaiDriver`** (`RefCounted`): `setup(track, seed, experience, stamina, aggression)` y, en cada
+  dibujarla). Se construye una vez y lo comparten todos los coches. Antes de `build` se fijan los
+  límites del coche en SI: `max_lat_accel` (agarre lateral, m/s²), `max_accel`, `max_brake` (m/s²),
+  `power_to_mass` (W/kg), `drag_per_mass` (1/m) y `max_speed` (m/s). Por defecto son los de un GT;
+  si el coche del juego no llega a eso, la IA planificará curvas que no puede tomar.
+- **`RdaiDriver`** (`RefCounted`): la geometría del coche en SI (`wheelbase`, `max_steer` en rad —
+  el ángulo que significa `steer = 1` —, `length`, `width`), luego
+  `setup(track, seed, experience, stamina, aggression) -> bool` (false si la geometría no es
+  válida) y, en cada
   `_physics_process(delta)`, `tick(posicion: Vector2, rotacion: float, velocidad: float,
   obstaculos: PackedFloat32Array, delta) -> Dictionary` con `steer`, `throttle`, `brake`, `reverse`
   y `mode`. Los obstáculos van en un array plano, 7 números por obstáculo: x, y, rotación,
@@ -126,12 +132,18 @@ Cómo cargarla en un proyecto:
 3. Abre el proyecto en el editor una vez (o crea `.godot/extension_list.cfg` con la línea
    `res://rdai.gdextension`).
 
-[`examples/godot/smoke.gd`](../examples/godot/smoke.gd) es un ejemplo completo: un coche cinemático
-en GDScript que da una vuelta a una elipse conducido por `RdaiDriver`. `scripts/godot-smoke.sh` lo
-ejecuta en Godot sin ventana y falla si el coche se sale de la pista.
+Dos ejemplos completos, que `scripts/godot-smoke.sh` ejecuta en Godot sin ventana (falla si el coche
+se sale de la pista):
 
-Siguiente paso: un nodo hijo de `VehicleBody3D` que lea el coche padre y los obstáculos de un grupo
-y escriba `engine_force`, `brake` y `steering` por sí solo.
+- [`examples/godot/smoke.gd`](../examples/godot/smoke.gd): 2D, un coche cinemático en GDScript.
+- [`examples/godot/vehicle3d.gd`](../examples/godot/vehicle3d.gd): 3D, un `VehicleBody3D` real con
+  cuatro `VehicleWheel3D` sobre la física de Godot. Es la receta para un juego 3D: posición
+  `Vector2(p.x, p.z)`, rotación `atan2(f.z, f.x)` con `f = global_basis.z`, velocidad
+  `linear_velocity.dot(f)`, y a la salida `steering = steer * max_steer`,
+  `engine_force = throttle * fuerza_max`, `brake = brake * freno_max`.
+
+Siguiente paso: un nodo hijo de `VehicleBody3D` que haga eso por sí solo y lea los obstáculos de un
+grupo.
 
 ## Unreal
 

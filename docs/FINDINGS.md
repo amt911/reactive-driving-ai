@@ -249,3 +249,12 @@ completes), `sha256sum x.crate` = the `checksum` in `Cargo.lock`, then copy to
 which fails the same way every time.
 
 Found: 2026-11-11 · env
+
+## Godot: nodes added in `SceneTree._initialize` enter the tree a frame later
+
+In a `--script` that extends `SceneTree`, `root.add_child(n)` inside `_initialize` is deferred: on
+the first `_physics_process` `n.is_inside_tree()` is false and `global_position` reads (0, 0, 0)
+(setting it fails). `examples/godot/vehicle3d.gd` waits until the car is in the tree (capped at 10
+frames, else FAIL — a script error before `add_child` otherwise hangs the run until `timeout`).
+Run headless physics with `--fixed-fps 60`: each step is 1/60 s and runs as fast as the CPU allows.
+The `VehicleWheel3D` rest length is `wheel_rest_length` (there is no `suspension_rest_length`).
