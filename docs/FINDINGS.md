@@ -258,3 +258,32 @@ the first `_physics_process` `n.is_inside_tree()` is false and `global_position`
 frames, else FAIL — a script error before `add_child` otherwise hangs the run until `timeout`).
 Run headless physics with `--fixed-fps 60`: each step is 1/60 s and runs as fast as the CPU allows.
 The `VehicleWheel3D` rest length is `wheel_rest_length` (there is no `suspension_rest_length`).
+
+## Receding-horizon racing line: what made it work (2026-11-12)
+
+The agent re-optimises a 200 m window of its own line every 0.1 s (`local_line.rs`). Measured on
+the default circuit, solo, 3 laps (best lap; ideal 63.23 s):
+- **Free-ended window** (end not tied to anything, end speed 0): myopic. It does not pay for the
+  corner past its end, stays mid-track, reshapes as the corner comes into view, asks for a speed
+  that falls faster than the car can brake: 9 walls, 69.9 s. Tie the end to a lap plan.
+- **End tied to a gradient-descent plan:** the exact window QP finds a cheaper path than the
+  not-quite-converged plan, so every window bends away and back, and the target oscillates 45-67
+  m/s. The plan must be a fixed point of the window solver: `RacingLine::build` now polishes with
+  the same QP (block Gauss-Seidel).
+- **Objective:** the full vector `|Δ²p|^2`. The track-normal component alone zig-zags where the
+  centreline has a sharp corner (peak curvature 0.47 on a polyline rectangle vs 0.13), even
+  re-linearised on the path normal; it was 1 s faster on the smooth circuit. Weighting by v^2
+  (lateral acceleration): ideal 64.99 s, worse.
+- **Stitch tolerance:** at 0.5 m ordinary tracking errors re-pinned the window at the car and the
+  line chased the car (68.0 s, 2 walls); 1.0-2.5 m: no re-pin solo, 65.12 s, 0 walls.
+- **Off the line:** pure minimum curvature from 4 m wide cut across the corner (target 45.3 vs
+  line 52.0 m/s); a term on bending relative to the plan (zero on it, so the plan stays a fixed
+  point) keeps parallel paths free. Outside the margin, bounds that return at a bounded slope and
+  start flat (a linear ramp cost a 0.012 1/m kink, 28-31 m/s).
+- **Planner memory is relative to the line:** when the window re-pins at the car, the planner's
+  previous choice (+3 m round debris) meant +6 m from the new line and the car steered into the
+  debris. `Planner::rebase` keeps it in place. Gating re-pins by planner mode instead moved the
+  failure around (crash journey, then 126 contacts in the 8-car race).
+- **Sweep artefacts:** checking a window solver by sweeping it round a lap needs the sweep to
+  close (overlap the start) and must not overwrite samples behind the window — both showed up as
+  kinks that read as a 7 s slower line.

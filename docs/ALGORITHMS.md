@@ -27,13 +27,17 @@ estructura de la IA:
 
 ## Visión general del nuevo diseño
 
-Hay tres capas, de la más lenta a la más rápida. Solo la última se ejecuta en cada tick:
+Hay cuatro capas, de la más lenta a la más rápida. Las dos últimas se ejecutan en cada tick:
 
-1. **Fuera de línea, una vez por circuito y tipo de coche:** la trazada de mínima curvatura y su
-   perfil de velocidad.
-2. **En cada tick, para cada agente:** un planificador local (unos 20 caminos candidatos × 12
+1. **Al ver el circuito, una vez por agente:** su propio plan de vuelta (la trazada de mínima
+   curvatura y su perfil de velocidad), calculado a partir de los bordes de la pista y los límites de
+   su coche. Nadie le da una trazada hecha.
+2. **Cada 0,1 s, para cada agente:** reoptimiza los próximos 200 m desde donde está el coche
+   (`local_line.rs`), unidos al final con su plan de vuelta. Si algo lo saca de su línea, planifica
+   la vuelta desde ahí a la velocidad que permite la pista, en lugar de volver a la fuerza.
+3. **En cada tick, para cada agente:** un planificador local (unos 20 caminos candidatos × 12
    muestras × los obstáculos cercanos) que elige el camino y la velocidad objetivo.
-3. **En cada tick, después del planificador:** los controladores (pure pursuit para el volante y un
+4. **En cada tick, después del planificador:** los controladores (pure pursuit para el volante y un
    lazo de velocidad con *feedforward*) y la personalidad del piloto, que solo modifica parámetros.
 
 Todo ocurre en el mismo tick: si un coche trompea delante, el plan que sale de esa llamada ya lo
@@ -44,7 +48,7 @@ esquiva o frena. No hay que esperar a ningún checkpoint.
 | Pieza | TFG | reactive-driving-ai | Por qué |
 | --- | --- | --- | --- |
 | Modelo del circuito | Rejilla de actores (nodos con estado: libre, ocupado, límite, checkpoint, guía) | Línea central muestreada con anchuras a cada lado, en coordenadas de Frenet (`s` a lo largo, `d` lateral); se carga desde CSV con formato TUMFTM | Proyectar una posición cuesta O(1) con una pista de búsqueda, sin un actor por celda. Además, la misma representación sirve para carreteras. |
-| Ruta global | A\* hasta el siguiente checkpoint, recalculado al cruzarlo | Trazada de **mínima curvatura**, calculada una vez [Braghin 2008; Heilmeier 2019] por descenso de gradiente proyectado *coarse-to-fine* | El camino óptimo de un circuito no cambia: se calcula una vez en milisegundos y todos los agentes lo leen. Lo que cambia (los otros coches) lo resuelve el planificador local. |
+| Ruta global | A\* hasta el siguiente checkpoint, recalculado al cruzarlo | Cada agente calcula su trazada de **mínima curvatura** [Braghin 2008; Heilmeier 2019]: descenso de gradiente *coarse-to-fine* para la forma general y después el QP exacto por ventanas (`min_curvature.rs`). Mientras conduce, la reoptimiza por ventanas de 200 m desde su posición (`local_line.rs`) | La IA encuentra su línea sola y la adapta a dónde está; con el QP exacto la vuelta ideal mejora (63,39 → 63,23 s) y la línea es un punto fijo de la reoptimización, así que no se mueve bajo el coche. Lo que cambia (los otros coches) lo resuelve el planificador local. |
 | Velocidad de paso | Puesta a mano en cada checkpoint, más MRUA | **Perfil de velocidad** con pasadas hacia delante y hacia atrás sobre la elipse de fricción, con límite de potencia y resistencia aerodinámica [Velenis & Tsiotras 2005; Kapania et al. 2016] | Sale de la física del coche, no de un número escrito a mano: un circuito nuevo funciona sin afinarlo. |
 | Reacción a obstáculos | Line traces delante, con longitud según la velocidad | **Planificador en coordenadas de Frenet** [Werling et al. 2010]: un abanico de quínticas laterales hasta distintos desplazamientos, comprobadas contra los obstáculos predichos (aceleración constante hasta pararse y deriva lateral) | Ve a todos los obstáculos cercanos, sabe si el de delante está frenando y propone un camino alternativo en el mismo cálculo. |
 | Frenar ante el de delante | Rayo más largo con más velocidad | **IDM** [Treiber et al. 2000] sobre el líder del camino elegido, y modo **Emergency** (frenada máxima por el camino menos grave) cuando ningún camino es seguro | El IDM da una deceleración suave y sin choques demostrada en tráfico. Emergency cubre lo que el IDM no puede: un choque inevitable que hay que hacer lo menos grave posible. |

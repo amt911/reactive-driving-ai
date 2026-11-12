@@ -15,7 +15,7 @@
 //!   into view, the speed it asks for drops faster than the car can brake, and the car hits the
 //!   wall (9 walls in 3 laps; docs/FINDINGS.md). The classic remedy is a terminal condition from a
 //!   longer-horizon plan (receding-horizon control; Mayne et al. 2000).
-//! - **Stitching** (Werling et al. 2010 §IV; Apollo's trajectory stitching): while the car is within
+//! - **Stitching** (Werling et al. 2010 §IV; the trajectory stitching of Fan et al. 2018): while the car is within
 //!   `stitch_tol` of its line, the new window starts from the old line, so the controller keeps
 //!   correcting tracking errors instead of the plan forgiving them; past it, the window starts at the
 //!   car's offset and course.

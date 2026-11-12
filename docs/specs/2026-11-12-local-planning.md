@@ -1,6 +1,14 @@
 # Spec — the AI finds its own line while driving (no precomputed racing line)
 
-Status: draft for approval (2026-11-12). Supersedes the "raceline-relative candidates" fix of PR #2.
+Status: approved 2026-11-12; phase 1 implemented in PR #2. Supersedes the "raceline-relative
+candidates" fix of PR #2.
+
+**Changes from this draft, measured (docs/FINDINGS.md, "Receding-horizon racing line"):** the
+window's end is joined to a lap plan the agent works out itself (offset, slope, speed) instead of
+ending at rest — a free end was myopic (9 walls). No `Reference` trait: the agent owns a
+track-indexed `RacingLine` the planner reads unchanged. The window is an exact QP
+(`min_curvature.rs`), which also polishes `RacingLine::build`. Window 200 m, stitch tolerance
+1.5 m, plus a bending-relative-to-plan term and a gentle return from outside the margin.
 
 ## Goal
 
