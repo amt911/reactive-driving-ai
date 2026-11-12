@@ -234,6 +234,23 @@ impl Planner {
         Planner { params, prev_delta: 0.0, prev_plan: None, obstacles: Vec::with_capacity(32), debug: None }
     }
 
+    /// Arc length where the previous choice's end offset applies (end of its transition).
+    pub fn prev_end_s(&self) -> Option<f32> {
+        self.prev_plan.map(|(s0, q)| s0 + q.horizon)
+    }
+
+    /// The reference line moved by `shift` metres at [`prev_end_s`](Self::prev_end_s): keep the
+    /// previous choice where it is on the road (its offset is relative to the line). `restart`:
+    /// the line was re-pinned at the car, so the previous lateral plan no longer means anything —
+    /// dropped. Without this a car avoiding debris 3 m off its line, re-pinned there, read its
+    /// "+3 m" choice as 6 m off the new line and steered back into the debris (measured).
+    pub fn rebase(&mut self, shift: f32, restart: bool) {
+        self.prev_delta -= shift;
+        if restart {
+            self.prev_plan = None;
+        }
+    }
+
     /// Plans one tick. `obstacles` are in world coordinates; anything out of range is ignored.
     // Each argument is distinct per-tick input from the agent; bundling them would only rename them.
     #[allow(clippy::too_many_arguments)]

@@ -4,7 +4,7 @@
 
 use crate::control::{lookahead, pure_pursuit, speed_control, VehicleGeometry};
 use crate::driver::{DriverProfile, DriverState};
-use crate::local_line::{LocalLine, LocalParams};
+use crate::local_line::{LocalLine, LocalParams, Replan};
 use crate::math::{wrap_angle, Vec2};
 use crate::planner::{plan_point, EgoFrenet, Mode, Obstacle, Plan, Planner, PlannerParams};
 use crate::racing_line::RacingLine;
@@ -163,7 +163,13 @@ impl Agent {
             self.local = Some(LocalLine::new(track, &limits_from.limits, LocalParams::default()));
         }
         let Some(local) = self.local.as_mut() else { return Controls::default() };
-        local.update(track, pr.s, pr.d, course_error, dt);
+        // The planner's previous choice is an offset from the line: when the line moves, re-base it.
+        let probe = self.planner.prev_end_s();
+        let before = probe.map(|x| local.line.offset_at(track, x));
+        let replan = local.update(track, pr.s, pr.d, course_error, dt);
+        if let (Some(x), Some(b), true) = (probe, before, replan != Replan::Kept) {
+            self.planner.rebase(local.line.offset_at(track, x) - b, replan == Replan::Restarted);
+        }
         let line = &local.line;
         let mut plan = self.planner.plan(track, line, &ego, obs.position, pr.index, obstacles, &drv);
         self.driver.update(dt, plan.blocked);

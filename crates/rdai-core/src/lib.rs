@@ -28,7 +28,7 @@ pub mod track;
 pub use agent::{Agent, AgentConfig, Controls, Observation};
 pub use control::VehicleGeometry;
 pub use driver::{DriverParams, DriverProfile, DriverState};
-pub use local_line::{LocalLine, LocalParams};
+pub use local_line::{LocalLine, LocalParams, Replan};
 pub use math::Vec2;
 pub use planner::{Mode, Obstacle, Plan, PlannerParams};
 pub use racing_line::{LineParams, RacingLine};

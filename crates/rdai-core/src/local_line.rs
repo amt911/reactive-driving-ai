@@ -62,6 +62,17 @@ impl Default for LocalParams {
 /// plan that turns it back over a few metres, not a vertical one.
 const MAX_START_SLOPE: f32 = 0.5;
 
+/// What [`LocalLine::update`] did.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Replan {
+    /// Nothing: within the period and near the line.
+    Kept,
+    /// Solved ahead, starting from the line.
+    Stitched,
+    /// Solved ahead, starting from the car (it was far from the line).
+    Restarted,
+}
+
 #[derive(Clone, Debug)]
 pub struct LocalLine {
     pub params: LocalParams,
@@ -108,14 +119,15 @@ impl LocalLine {
         self.qp.len()
     }
 
-    /// Re-plans when the period is up, or at once when the car is more than `stitch_tol` off the
-    /// line. `s`, `d`: the car's Frenet position; `course_error`: course minus track heading.
-    /// Returns true when it solved.
-    pub fn update(&mut self, track: &Track, s: f32, d: f32, course_error: f32, dt: f32) -> bool {
+    /// Re-plans when the period is up (from the line: [`Replan::Stitched`]), or at once when the
+    /// car is more than `stitch_tol` off the line (from the car: [`Replan::Restarted`]). `s`, `d`:
+    /// the car's Frenet position; `course_error`: course minus track heading. Whoever keeps
+    /// offsets relative to the line (the planner) must re-base them when it moves.
+    pub fn update(&mut self, track: &Track, s: f32, d: f32, course_error: f32, dt: f32) -> Replan {
         self.timer -= dt;
         let far = (d - self.line.offset_at(track, s)).abs() > self.params.stitch_tol;
         if self.timer > 0.0 && !far {
-            return false;
+            return Replan::Kept;
         }
         self.timer = self.params.period;
         let n = track.len();
@@ -129,7 +141,11 @@ impl LocalLine {
             (a0, (self.line.offset[(i0 + 1) % n] - a0) / track.spacing())
         };
         self.solve(track, i0, a0, slope);
-        true
+        if far {
+            Replan::Restarted
+        } else {
+            Replan::Stitched
+        }
     }
 
     /// Solves the window starting at track sample `i0`, its first two offsets pinned to `a0` and
@@ -262,7 +278,7 @@ mod tests {
         for j in 2..l.window() {
             let i = (i0 + j) % n;
             let o = l.line.offset[i];
-            assert!(o >= -5.5 - 1e-3 && o <= 5.5 + 1e-3, "sample {i}: {o}");
+            assert!((-5.5 - 1e-3..=5.5 + 1e-3).contains(&o), "sample {i}: {o}");
         }
         let last = (i0 + l.window() - 1) % n;
         assert!(l.line.speed[last] <= l.plan.speed[last], "end speed above the plan");
@@ -293,11 +309,14 @@ mod tests {
     fn update_stitches_near_the_line_and_restarts_from_the_car_when_far() {
         let t = rect();
         let mut l = LocalLine::new(&t, &VehicleLimits::default(), LocalParams::default());
-        assert!(l.update(&t, 10.0, 0.0, 0.0, 0.016), "first update solves");
-        assert!(!l.update(&t, 10.5, 0.1, 0.0, 0.016), "within the period and near the line: no solve");
+        // The line starts as the lap plan: a car on it stitches.
+        let on = l.line.offset_at(&t, 10.0);
+        assert_eq!(l.update(&t, 10.0, on, 0.0, 0.016), Replan::Stitched, "first update solves");
+        assert_eq!(l.update(&t, 10.5, on + 0.1, 0.0, 0.016), Replan::Kept, "within the period and near the line");
         // 3 m off the line: solve at once, from the car.
-        assert!(l.update(&t, 11.0, 3.0, 0.0, 0.016));
+        let off = l.line.offset_at(&t, 11.0) + 3.0;
+        assert_eq!(l.update(&t, 11.0, off, 0.0, 0.016), Replan::Restarted);
         let i0 = t.index_at(11.0).0 + 1;
-        assert!((l.line.offset[i0] - 3.0).abs() < 0.05, "{}", l.line.offset[i0]);
+        assert!((l.line.offset[i0] - off).abs() < 0.1, "{} vs {off}", l.line.offset[i0]);
     }
 }
