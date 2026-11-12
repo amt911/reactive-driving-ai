@@ -53,6 +53,13 @@ pub struct PlannerParams {
     /// Lateral distance (m) from the previous plan under which the new plan starts from the
     /// previous plan's state instead of the measured one (temporal consistency, Werling 2010).
     pub consistency_tolerance: f32,
+    /// The same while the car is alone ([`Planner::alone`]): above the local line's `stitch_tol`
+    /// (1.5 m), so a car alone further off has its line re-pinned at it instead of the planner's
+    /// short return from the measured offset, whose curvature crushes the target. At 1.0, ~1 m of
+    /// tracking error in a fast sweep sent a lone car into the wall every second flying lap
+    /// (proc:4, `tests/flying_laps.rs`). In traffic 1.6 was far worse (243-run matrix: 9 DNF,
+    /// lap +3.8 s): there the plan must follow the car out of other cars' way.
+    pub consistency_tolerance_alone: f32,
     /// Clearance from the track edge (m) under which a path starts to cost.
     pub edge_margin: f32,
 }
@@ -72,6 +79,7 @@ impl Default for PlannerParams {
             runoff: 1.5,
             perception_range: 160.0,
             consistency_tolerance: 1.0,
+            consistency_tolerance_alone: 1.6,
             edge_margin: 1.0,
         }
     }
@@ -222,6 +230,9 @@ const SPEED_LOSS_COST: f32 = 1.2;
 #[derive(Clone, Debug)]
 pub struct Planner {
     pub params: PlannerParams,
+    /// Nobody near (set by the agent each tick): plans stay consistent up to
+    /// `consistency_tolerance_alone`.
+    pub alone: bool,
     prev_delta: f32,
     /// Previous plan (start s, lateral profile) for temporal consistency.
     prev_plan: Option<(f32, Quintic)>,
@@ -231,7 +242,14 @@ pub struct Planner {
 
 impl Planner {
     pub fn new(params: PlannerParams) -> Self {
-        Planner { params, prev_delta: 0.0, prev_plan: None, obstacles: Vec::with_capacity(32), debug: None }
+        Planner {
+            params,
+            alone: false,
+            prev_delta: 0.0,
+            prev_plan: None,
+            obstacles: Vec::with_capacity(32),
+            debug: None,
+        }
     }
 
     /// Arc length where the previous choice's end offset applies (end of its transition).
@@ -305,7 +323,7 @@ impl Planner {
             let sigma = track.delta_s(s_prev, ego.s);
             if sigma >= 0.0 && sigma < q_prev.horizon {
                 let e_prev = q_prev.value(sigma);
-                if (e_prev - e0).abs() < p.consistency_tolerance {
+                if keeps_plan(&p, self.alone, e_prev, e0) {
                     e0 = e_prev;
                     de0 = q_prev.first(sigma);
                 }
@@ -506,6 +524,13 @@ fn frenet_extent(length: f32, width: f32, rel: f32) -> (f32, f32) {
     (0.5 * (length * c + width * s), 0.5 * (length * s + width * c))
 }
 
+/// Whether a new plan starts from the previous plan's state (`e_prev`) rather than the measured
+/// offset `e0` (temporal consistency).
+fn keeps_plan(p: &PlannerParams, alone: bool, e_prev: f32, e0: f32) -> bool {
+    let tol = if alone { p.consistency_tolerance_alone } else { p.consistency_tolerance };
+    (e_prev - e0).abs() < tol
+}
+
 /// World point of a plan at `sigma` metres ahead of its start (for steering and drawing).
 pub fn plan_point(track: &Track, line: &RacingLine, s0: f32, q: &Quintic, sigma: f32) -> Vec2 {
     let s = s0 + sigma;
@@ -531,6 +556,15 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn a_lone_car_keeps_its_plan_further_off_than_one_in_traffic() {
+        let p = PlannerParams::default();
+        assert!(keeps_plan(&p, false, 0.0, 0.9) && keeps_plan(&p, true, 0.0, 0.9));
+        assert!(!keeps_plan(&p, false, 0.0, -1.2), "in traffic 1.2 m off re-plans from the car");
+        assert!(keeps_plan(&p, true, 0.0, -1.2), "alone it keeps the plan up to the line's re-pin");
+        assert!(!keeps_plan(&p, true, 0.0, 1.7));
+    }
 
     #[test]
     fn a_car_across_the_track_is_as_wide_as_it_is_long() {

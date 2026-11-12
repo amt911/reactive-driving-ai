@@ -291,3 +291,47 @@ the default circuit, solo, 3 laps (best lap; ideal 63.23 s):
   as aligned with the track (half width 1.0 m); a car spun across it reaches 2.25 m to each side, and
   followers in the crash journey brushed it at 3.2 m lateral distance. `frenet_extent` boxes the
   rotated rectangle. Matrix (243 runs): contacts after the scenario 960 -> 770, walls 1650 -> 1468.
+- **Flying laps, proc:4 (2026-11-12):** two bugs behind one wall, every second lap. (1) Each window's
+  two samples behind its start were extended straight *in offset*; the window's curvature is the
+  plan's plus e'', so where the plan bends sideways that read as a false 0.0025 1/m kink under the
+  car and the target fell 69 -> 58 m/s. They now continue the *deviation* from the plan. (2) With
+  that fixed, ~1 m of tracking error at 66 m/s broke temporal consistency (1.0 m) and the planner's
+  short return from the measured offset cut the target 67 -> 51 m/s: flat-out braking mid-corner,
+  wide, wall. `consistency_tolerance` is now 1.6 m, above the local line's 1.5 m stitch tolerance:
+  alone, the line re-pins at the car before the planner would return on its own.
+- **Stuck by the wall (2026-11-12):** backing off mirrored the forward steering; wedged between
+  debris and the wall, that put the tail into the wall, where the car pushed for the whole reverse
+  and then drove back into the same gap (a DNF, 555 wall hits in one matrix run). Reverse now
+  steers the nose back to the track direction. Tried and dropped (not needed for the fix, no
+  evidence of their own): longer reverses when stuck again in the same place, and a cost for
+  passing an obstacle on the other side from the last plan (the choice flipped every tick at
+  walking pace). Also: `consistency_tolerance` 1.6 for every car cost 9 DNFs and +3.8 s of mean
+  lap in traffic; it is 1.6 only when the car is alone. Straightening on *every* reverse touched
+  walls round debris (slow wall hits on 18 debris races 7 on main -> 39); now the first reverse
+  mirrors as before and only a second one at the same place straightens (12).
+- **Open (2026-11-12): walls in traffic after the window-start fix.** The false kink made cars
+  slower into some braking zones; without it, a car that brakes flat out in `Avoid` (an obstacle
+  past `RESTART_CLEARANCE`) slides wide, counts as alone, and the local line re-pins at it every
+  tick: the line follows the car to the wall (default seed 2, 10 cars, debris: s 459-583). By
+  mode (`bench` prints wall hits by planner mode and speed band): the rise is in `Avoid` at 5-30
+  m/s on debris races (68 -> 131 on 18 races). Tried, all no better on the 243-run matrix (walls /
+  contacts / pile-ups / lap, against 1600 / 1967 / 13 / 55.47 s): trail braking in `Avoid` too
+  (3171 / 4562 / 53); a 1 s hold between re-pins (1963 / 1697 / 12 / 55.42); `RESTART_CLEARANCE`
+  120 m (1988 / 2115 / 17 / 57.13); re-pinning only once the car's course runs along the line
+  (1817 / 1811 / 11 / 56.16: fewer fast walls, more slow ones).
+- **Pile-up deadlocks decide the matrix (2026-11-12).** On seeds 10-18 this branch had 4 DNFs and
+  21130 walls against main's 0 and 1340 — almost all from one race (default, seed 12, 10 cars,
+  debris): six cars stopped against the right wall at s 596-620, all in Emergency, for ever. The
+  front one sat across the track (63° to it), tail on the wall, nose at the debris 6.5 m away: every
+  Frenet candidate starts with its heading (slope ~2), so every path ran into the debris, and
+  reversing pushed into the wall; the five behind could neither pass it nor back off. Other
+  binaries deadlock in other races (window fix alone: 29097 contacts in that race; mirrored
+  reverse: 1.3 M). A car across the track is outside what the Frenet lattice can plan: it needs a
+  low-speed manoeuvre planner (Reeds-Shepp / hybrid A*). Until then, 243-run totals between
+  variants move ±15 % on which race deadlocks; compare DNFs and per-run lines (`RUNS_FILE`).
+- **Compare variants run by run, with intervals (2026-11-12).** Totals over the matrix misled this
+  branch several times (contacts -10 %, pile-ups -43 % looked like wins). `scripts/compare.sh A B`
+  pairs two `RUNS_FILE`s and gives each metric's mean per-run difference with a 95 % bootstrap
+  interval (walls and contacts capped at 50/run). main -> this branch: seeds 1-9 walls +1.1/run
+  [+0.03, +2.2], contacts and lap not shown; seeds 10-18 walls +2.1 [+0.9, +3.4], lap -0.85 s
+  [-1.65, -0.10], contacts and DNFs not shown. Decide on intervals over both seed sets, not totals.

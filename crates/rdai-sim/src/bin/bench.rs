@@ -1,7 +1,7 @@
 //! Headless race / scenario runner. Prints results and the AI's cost per tick.
 //!
 //! cargo run --release -p rdai-sim --bin bench -- [--cars N] [--laps L] [--track default|oval|proc:SEED|FILE.csv]
-//!     [--scenario race|crash|debris] [--seed N]
+//!     [--scenario race|crash|debris] [--seed N] [--trace FILE.csv [--trace-car N]]
 
 use rdai_sim::{default_field, tracks, World};
 
@@ -50,6 +50,10 @@ fn main() {
     let mut contacts_after = 0usize;
     // --trace FILE: CSV of car 0 every 0.1 s (time, s, d, line offset, speed, target, mode, steer, throttle,
     // brake, wall hits, own line offset, own line offset 60 m ahead, line offset 60 m ahead).
+    // --trace-car N: which car the trace follows (default 0, the pole sitter).
+    let trace_car: usize = get("--trace-car").and_then(|v| v.parse().ok()).unwrap_or(0).min(cars.saturating_sub(1));
+    let mut walls_seen = vec![0u32; cars];
+    let mut walls_by = [[0usize; 3]; 5];
     let mut trace = get("--trace").map(|p| std::io::BufWriter::new(std::fs::File::create(p).expect("trace file")));
     let mut steps = 0u64;
     while !w.finished() && w.time < 60.0 * 30.0 {
@@ -57,7 +61,7 @@ fn main() {
         steps += 1;
         if let (Some(f), true) = (trace.as_mut(), steps.is_multiple_of(12)) {
             use std::io::Write;
-            let c = &w.cars[0];
+            let c = &w.cars[trace_car];
             let pr = w.track.project(c.state.position, None);
             let plan = c.agent.last_plan().copied();
             let _ = writeln!(
@@ -95,8 +99,28 @@ fn main() {
         if injected {
             contacts_after += w.new_contacts.len();
         }
+        // Wall hits by the hitting car's planner mode (0 cruise, 1 follow, 2 avoid, 3 emergency,
+        // 4+ other) and speed band, to tell where a change in walls comes from.
+        for (k, c) in w.cars.iter().enumerate() {
+            if c.wall_hits > walls_seen[k] {
+                let m = (c.controls.mode as usize).min(4);
+                let band = if c.state.vx.abs() < 5.0 {
+                    0
+                } else if c.state.vx < 30.0 {
+                    1
+                } else {
+                    2
+                };
+                walls_by[m][band] += (c.wall_hits - walls_seen[k]) as usize;
+                walls_seen[k] = c.wall_hits;
+            }
+        }
     }
 
+    println!(
+        "walls by mode [<5, 5-30, >30 m/s]: cruise {:?} follow {:?} avoid {:?} emergency {:?} other {:?}",
+        walls_by[0], walls_by[1], walls_by[2], walls_by[3], walls_by[4]
+    );
     println!("\n pos  driver   laps  best lap  finish    walls contacts");
     for (p, &i) in w.positions().iter().enumerate() {
         let c = &w.cars[i];

@@ -59,6 +59,13 @@ impl Default for AgentConfig {
 /// Gap (m) kept to anything behind while reversing out of a stuck position.
 const REVERSE_CLEARANCE: f32 = 1.5;
 
+/// Steering (rad) per radian of heading error while backing off. Guess: full lock at ~0.5 rad.
+const REVERSE_STEER_GAIN: f32 = 1.0;
+
+/// Two recoveries starting within this distance (m) count as stuck at the same place. Guess: a
+/// reverse is ~8 m, so a car that drove back into the same gap starts within a car length.
+const STUCK_SAME_PLACE: f32 = 15.0;
+
 #[derive(Clone, Debug)]
 pub struct Agent {
     pub geometry: VehicleGeometry,
@@ -70,6 +77,8 @@ pub struct Agent {
     noise: f32,
     stuck_time: f32,
     reverse_time: f32,
+    /// Where the last recovery started, and how many in a row started there.
+    stuck_at: Option<(f32, u8)>,
     /// Position at the previous tick, to estimate the course (direction of travel).
     prev_position: Option<Vec2>,
     /// Leaky integral of the offset from the plan (m·s).
@@ -134,6 +143,7 @@ impl Agent {
             noise: 0.0,
             stuck_time: 0.0,
             reverse_time: 0.0,
+            stuck_at: None,
             prev_position: None,
             track_int: 0.0,
             local: None,
@@ -201,6 +211,7 @@ impl Agent {
             self.planner.rebase(local.line.offset_at(track, x) - b, replan == Replan::Restarted);
         }
         let line = &local.line;
+        self.planner.alone = alone;
         let mut plan = self.planner.plan(track, line, &ego, obs.position, pr.index, obstacles, &drv);
         self.driver.update(dt, plan.blocked);
 
@@ -273,7 +284,15 @@ impl Agent {
             reverse = 1;
             throttle = 0.5;
             brake = 0.0;
-            steer = -steer;
+            // Backing off mirrors the forward steering (fewest wall touches round debris: 12 vs
+            // 39 slow ones on 18 debris races). Stuck again at the same place, it steers the nose
+            // back to the track direction instead: wedged between debris and the wall, mirroring
+            // put the tail into the wall and the car pushed there for ever (docs/FINDINGS.md).
+            steer = if self.stuck_at.is_some_and(|(_, n)| n > 1) {
+                (REVERSE_STEER_GAIN * heading_error).clamp(-self.geometry.max_steer, self.geometry.max_steer)
+            } else {
+                -steer
+            };
         } else if self.reverse_time > 0.0 {
             // Something behind: stop backing off (look in the mirror before reversing).
             self.reverse_time = 0.0;
@@ -286,6 +305,9 @@ impl Agent {
             if self.stuck_time > 2.5 {
                 self.stuck_time = 0.0;
                 self.reverse_time = 3.0;
+                let again = self.stuck_at.is_some_and(|(s0, _)| track.delta_s(s0, pr.s).abs() < STUCK_SAME_PLACE);
+                let n = if again { self.stuck_at.map_or(1, |(_, n)| n.saturating_add(1)) } else { 1 };
+                self.stuck_at = Some((pr.s, n));
             }
         } else {
             self.stuck_time = 0.0;
