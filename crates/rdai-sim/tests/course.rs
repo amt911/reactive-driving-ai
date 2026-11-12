@@ -24,7 +24,10 @@ fn sideslip_is_not_read_as_heading_away_from_the_line() {
         let d = line.offset_at(track, s);
         let slope = (line.offset_at(track, s + 1.0) - line.offset_at(track, s - 1.0)) * 0.5;
         let course = track.heading_at(s) + slope.atan();
-        let obs = Observation { position: track.to_world(s, d), heading: course + beta, speed: v };
+        // The first tick has no displacement to estimate the course from: there the car is aligned
+        // with it (a car spawned or just measured), so the agent's line starts along the course.
+        let yaw = if k == 0 { 0.0 } else { beta };
+        let obs = Observation { position: track.to_world(s, d), heading: course + yaw, speed: v };
         agent.tick(track, line, &obs, &[], dt);
     }
     let slope = agent.last_plan().expect("planned").lateral.first(0.0);

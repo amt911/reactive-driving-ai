@@ -4,6 +4,7 @@
 
 use crate::control::{lookahead, pure_pursuit, speed_control, VehicleGeometry};
 use crate::driver::{DriverProfile, DriverState};
+use crate::local_line::{LocalLine, LocalParams};
 use crate::math::{wrap_angle, Vec2};
 use crate::planner::{plan_point, EgoFrenet, Mode, Obstacle, Plan, Planner, PlannerParams};
 use crate::racing_line::RacingLine;
@@ -72,6 +73,9 @@ pub struct Agent {
     prev_position: Option<Vec2>,
     /// Leaky integral of the offset from the plan (m·s).
     track_int: f32,
+    /// The agent's own line, re-optimised over the road ahead while it drives (`local_line.rs`);
+    /// created on the first tick, when the track is known.
+    local: Option<LocalLine>,
 }
 
 /// Largest gap between course and body heading trusted as sideslip (rad); a bigger one is a
@@ -117,6 +121,7 @@ impl Agent {
             reverse_time: 0.0,
             prev_position: None,
             track_int: 0.0,
+            local: None,
         }
     }
 
@@ -129,10 +134,16 @@ impl Agent {
         self.planner.debug = if on { Some(Vec::with_capacity(48)) } else { None };
     }
 
+    /// The line the agent drives on (its own, re-optimised ahead of it), once it has ticked.
+    pub fn line(&self) -> Option<&RacingLine> {
+        self.local.as_ref().map(|l| &l.line)
+    }
+
+    /// One step. `limits_from` only gives the car's limits: the agent finds its own line.
     pub fn tick(
         &mut self,
         track: &Track,
-        line: &RacingLine,
+        limits_from: &RacingLine,
         obs: &Observation,
         obstacles: &[Obstacle],
         dt: f32,
@@ -148,6 +159,12 @@ impl Agent {
         let course_error = wrap_angle(course - track.heading_at(pr.s));
         let ego = EgoFrenet { s: pr.s, d: pr.d, heading_error: course_error, speed: obs.speed };
         let drv = self.driver.params();
+        if self.local.as_ref().is_none_or(|l| l.line.offset.len() != track.len()) {
+            self.local = Some(LocalLine::new(track, &limits_from.limits, LocalParams::default()));
+        }
+        let Some(local) = self.local.as_mut() else { return Controls::default() };
+        local.update(track, pr.s, pr.d, course_error, dt);
+        let line = &local.line;
         let mut plan = self.planner.plan(track, line, &ego, obs.position, pr.index, obstacles, &drv);
         self.driver.update(dt, plan.blocked);
 
@@ -250,9 +267,9 @@ impl Agent {
         })
     }
 
-    pub fn plan_polyline(&self, track: &Track, line: &RacingLine, out: &mut Vec<Vec2>) {
+    pub fn plan_polyline(&self, track: &Track, out: &mut Vec<Vec2>) {
         out.clear();
-        if let Some(p) = &self.last_plan {
+        if let (Some(p), Some(line)) = (&self.last_plan, self.line()) {
             for k in 0..=16 {
                 out.push(plan_point(track, line, p.s0, &p.lateral, p.lateral.horizon * k as f32 / 16.0));
             }

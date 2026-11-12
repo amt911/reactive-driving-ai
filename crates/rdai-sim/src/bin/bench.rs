@@ -61,7 +61,7 @@ fn main() {
             let plan = c.agent.last_plan().copied();
             let _ = writeln!(
                 f,
-                "{:.2},{:.1},{:.2},{:.2},{:.2},{:.2},{},{:.3},{:.2},{:.2},{}",
+                "{:.2},{:.1},{:.2},{:.2},{:.2},{:.2},{},{:.3},{:.2},{:.2},{},{:.2},{:.2},{:.2}",
                 w.time,
                 pr.s,
                 pr.d,
@@ -72,7 +72,10 @@ fn main() {
                 c.controls.steer,
                 c.controls.throttle,
                 c.controls.brake,
-                c.wall_hits
+                c.wall_hits,
+                c.agent.line().map(|l| l.offset_at(&w.track, pr.s)).unwrap_or(0.0),
+                c.agent.line().map(|l| l.offset_at(&w.track, pr.s + 60.0)).unwrap_or(0.0),
+                w.line.offset_at(&w.track, pr.s + 60.0),
             );
         }
         if !injected && w.time > 25.0 && scenario != "race" {

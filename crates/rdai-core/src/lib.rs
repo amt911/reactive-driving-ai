@@ -18,6 +18,7 @@ pub mod control;
 pub mod driver;
 pub mod local_line;
 pub mod math;
+pub mod min_curvature;
 pub mod planner;
 pub mod racing_line;
 pub mod rng;

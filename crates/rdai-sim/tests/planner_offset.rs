@@ -9,25 +9,29 @@
 //! along the shortest quintic, whose extra curvature collapsed the target to ~37 m/s at s = 590
 //! with a 4 m offset, against a line speed of ~57 m/s.
 
-use rdai_core::planner::{EgoFrenet, Planner};
-use rdai_core::PlannerParams;
+use rdai_core::Observation;
 use rdai_sim::{default_field, tracks, World};
 
-/// Target speed the planner gives a car `offset` metres beside the line, parallel to it, at `s`.
+/// Target speed the agent gives itself `offset` metres beside the line, parallel to it, at `s`:
+/// through `Agent::tick`, as an engine drives it (the agent plans on its own line, found from
+/// where it is; the global line is only the oracle).
 fn target_beside_line(w: &World, s: f32, offset: f32, speed: f32) -> (f32, f32) {
     let (track, line) = (&w.track, &w.line);
-    let line_d = line.offset_at(track, s);
-    let slope = (line.offset_at(track, s + 1.0) - line.offset_at(track, s - 1.0)) * 0.5;
-    let ego = EgoFrenet { s, d: line_d + offset, heading_error: slope.atan(), speed };
-    let pos = track.to_world(s, ego.d);
-    let idx = track.index_at(s).0;
-    let drv = w.cars[0].agent.driver.params();
-    let mut planner = Planner::new(PlannerParams::default());
-    let plan = planner.plan(track, line, &ego, pos, idx, &[], &drv);
+    let mut agent = w.cars[0].agent.clone();
+    let dt = 1.0 / 120.0;
+    for k in 0..2 {
+        let sk = s + speed * dt * k as f32;
+        let d = line.offset_at(track, sk) + offset;
+        let slope = (line.offset_at(track, sk + 1.0) - line.offset_at(track, sk - 1.0)) * 0.5;
+        let obs = Observation { position: track.to_world(sk, d), heading: track.heading_at(sk) + slope.atan(), speed };
+        agent.tick(track, line, &obs, &[], dt);
+    }
+    let target = agent.last_plan().expect("planned").target_speed;
     // The line's own requirement over the first 20 m, scaled by the grip this driver uses (the
     // planner scales line speeds by sqrt(grip_usage) — same convention).
+    let drv = agent.driver.params();
     let oracle = line.min_speed_ahead(track, s, 20.0) * drv.grip_usage.sqrt();
-    (plan.target_speed, oracle)
+    (target, oracle)
 }
 
 #[test]
