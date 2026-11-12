@@ -51,6 +51,20 @@ hits, ~3.5 µs/tick**.
   `crates/rdai-sim/tests/planner_offset.rs` (2 m offset at s = 548 → 44 m/s target vs 58.8) and the
   `rdai-ffi` round trip (ellipse, 10 m/s → brakes) are red. Best lap 70.4 s vs the 69.7 s
   (ideal + 10 %) of `tests/solo_laps.rs`.
+- *Where the solo lap really loses time (2026-11-12, probe of `last_plan` at s 2300–2700):* the
+  car is on the line (|e| < 0.3 m) but every plan starts with slope `de0` ≈ +0.03–0.045 and bends
+  back with e'' ≈ −0.004…−0.012, so the envelope caps 37–47 m/s against a line speed of 65–71. That
+  slope is the **sideslip**: `heading_error` is body yaw minus track heading, and in the corner
+  β = atan(vy/vx) ≈ −0.03…−0.04 cancels it exactly. The planner reads the slide as drifting
+  outward. **But fixing it alone makes things worse:** planning from the course (estimated from
+  the position delta between ticks; `course-attempt.patch` kept out of git) gave 80.8 s / 7 walls;
+  plus course in pure pursuit 86.8 s / 24; pure pursuit from the CG with the course 83.5 s / 25;
+  plus consistency tolerance 0.5 / 0.25 m: 98 s. With the course right the car drifts ~1 m outward
+  through long corners (pure pursuit on body yaw under sideslip tracks with an offset ≈ β·ld), the
+  plan diverges, consistency resets at 1 m and the reset plan brakes mid-corner (spin at s ≈ 650).
+  The phantom slope was compensating the tracking drift. Next step is a controller with lateral
+  error feedback that holds the plan under sideslip (Stanley-style, or yaw-rate feedforward), *then*
+  the course fix — not either alone.
 
 **Cause (original suspicion).** Step 4 of `Planner::plan` (`crates/rdai-core/src/planner.rs`)
 evaluates `kappa = line.curvature[idx] + q.second(sigma)`. When the car is displaced laterally, the
