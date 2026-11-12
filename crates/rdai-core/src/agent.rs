@@ -92,6 +92,10 @@ const TRAIL_BRAKE_FLOOR: f32 = 0.3;
 
 const MAX_SIDESLIP: f32 = 0.3;
 
+/// Clearance (m) the agent's line keeps between the car's side and the track edge; the value
+/// `rdai-sim` has always built lines with (`0.5 * width + 1.0`). A guess.
+const EDGE_CLEARANCE: f32 = 1.0;
+
 /// Distance (m) to the nearest obstacle beyond which the agent may re-plan its line from where it
 /// is. A guess: about 1.5 s at racing speed, longer than an overtake's lateral move.
 const RESTART_CLEARANCE: f32 = 60.0;
@@ -164,7 +168,11 @@ impl Agent {
         let ego = EgoFrenet { s: pr.s, d: pr.d, heading_error: course_error, speed: obs.speed };
         let drv = self.driver.params();
         if self.local.as_ref().is_none_or(|l| l.line.offset.len() != track.len()) {
-            self.local = Some(LocalLine::new(track, &limits_from.limits, LocalParams::default()));
+            // Edge margin from the car's own width (the convention `rdai-sim` builds lines with): a
+            // fixed 1.5 m left a 1.9 m car 0.55 m from the edge and squeezed cars together in
+            // traffic (proc:1, 8 cars: laps 47 -> 54 s, measured).
+            let params = LocalParams { plan_margin: 0.5 * self.geometry.width + EDGE_CLEARANCE, ..Default::default() };
+            self.local = Some(LocalLine::new(track, &limits_from.limits, params));
         }
         let Some(local) = self.local.as_mut() else { return Controls::default() };
         // The planner's previous choice is an offset from the line: when the line moves, re-base it.

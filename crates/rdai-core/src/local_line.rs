@@ -38,8 +38,13 @@ pub struct LocalParams {
     pub horizon: f32,
     /// Time between solves (s). A guess: 6 ticks at 60 Hz, fast against how the road changes.
     pub period: f32,
-    /// Distance kept from each track edge (m), as `LineParams::margin`.
+    /// Distance kept from each track edge (m) by the windows, as `LineParams::margin`. Less than
+    /// the plan's: room to come back or get round without the plan itself running closer to the
+    /// edge. Measured on the 243-run matrix: windows at the plan's margin (1.95 m) 2740 contacts,
+    /// 26 pile-ups; at 1.5 m 2415 and 20.
     pub margin: f32,
+    /// Distance kept from each track edge (m) by the lap plan (the agent sets it from its width).
+    pub plan_margin: f32,
     /// Offset from the line (m) past which the window starts at the car instead of the line.
     /// Measured: at 0.5 m the window re-pinned on ordinary tracking errors and the line chased the
     /// car (68.0 s, 2 walls); from 1.0 to 2.5 m no re-pin in a solo lap (65.12 s, 0 walls).
@@ -53,7 +58,14 @@ pub struct LocalParams {
 
 impl Default for LocalParams {
     fn default() -> Self {
-        LocalParams { horizon: 200.0, period: 0.1, margin: 1.5, stitch_tol: 1.5, relative_weight: 4.0 }
+        LocalParams {
+            horizon: 200.0,
+            period: 0.1,
+            margin: 1.5,
+            plan_margin: 1.5,
+            stitch_tol: 1.5,
+            relative_weight: 4.0,
+        }
     }
 }
 
@@ -106,7 +118,7 @@ impl LocalLine {
         let n = track.len();
         let window = ((params.horizon / track.spacing()).ceil() as usize).clamp(8, n.saturating_sub(4).max(8));
         let f = || vec![0.0f32; window];
-        let plan = RacingLine::build(track, &LineParams { margin: params.margin, ..Default::default() }, limits);
+        let plan = RacingLine::build(track, &LineParams { margin: params.plan_margin, ..Default::default() }, limits);
         LocalLine {
             params,
             line: plan.clone(),
