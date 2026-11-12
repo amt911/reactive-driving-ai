@@ -299,3 +299,16 @@ the default circuit, solo, 3 laps (best lap; ideal 63.23 s):
   short return from the measured offset cut the target 67 -> 51 m/s: flat-out braking mid-corner,
   wide, wall. `consistency_tolerance` is now 1.6 m, above the local line's 1.5 m stitch tolerance:
   alone, the line re-pins at the car before the planner would return on its own.
+- **Stuck by the wall (2026-11-12):** backing off mirrored the forward steering; wedged between
+  debris and the wall, that put the tail into the wall, where the car pushed for the whole reverse
+  and then drove back into the same gap (a DNF, 555 wall hits in one matrix run). Reverse now
+  steers the nose back to the track direction. Tried and dropped (not needed for the fix, no
+  evidence of their own): longer reverses when stuck again in the same place, and a cost for
+  passing an obstacle on the other side from the last plan (the choice flipped every tick at
+  walking pace). Also: `consistency_tolerance` 1.6 for every car cost 9 DNFs and +3.8 s of mean
+  lap in traffic; it is 1.6 only when the car is alone.
+- **Open (2026-11-12): walls in traffic after the window-start fix.** The false kink made cars
+  slower into some braking zones; without it, a car that brakes flat out in `Avoid` (an obstacle
+  past `RESTART_CLEARANCE`) slides wide, counts as alone, and the local line re-pins at it every
+  tick: the line follows the car to the wall (default seed 2, 10 cars, debris: s 459-583). Trail
+  braking in `Avoid` too was far worse (pile-ups 11 -> 53).
