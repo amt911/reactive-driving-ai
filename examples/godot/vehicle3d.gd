@@ -22,6 +22,7 @@ var t := 0.0
 var travelled := 0.0
 var prev_angle := 0.0
 var top := 0.0
+var waited := 0
 
 func _initialize() -> void:
 	if not ClassDB.class_exists("RdaiDriver"):
@@ -82,7 +83,7 @@ func _build_world() -> void:
 			var wheel := VehicleWheel3D.new()
 			wheel.position = Vector3(x, 0.3, z)
 			wheel.wheel_radius = 0.35
-			wheel.suspension_rest_length = 0.3
+			wheel.wheel_rest_length = 0.3
 			wheel.suspension_travel = 0.2
 			wheel.suspension_stiffness = 40.0
 			wheel.damping_compression = 2.0
@@ -95,8 +96,14 @@ func _build_world() -> void:
 	root.add_child(car)
 
 func _physics_process(delta: float) -> bool:
-	if car == null:
-		return true
+	# Nodes added in _initialize enter the tree a frame later.
+	if car == null or not car.is_inside_tree():
+		waited += 1
+		if waited > 10:
+			printerr("FAIL: the car never entered the scene tree")
+			quit(1)
+			return true
+		return false
 	var p := car.global_position
 	var f := car.global_basis.z
 	var v := car.linear_velocity.dot(f)
