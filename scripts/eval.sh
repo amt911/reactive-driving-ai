@@ -3,7 +3,7 @@
 # Single races are chaotic: one incident changes every number after it. Comparing variants on a
 # matrix (tracks x 9 seeds x field sizes x scenarios, 243 runs; SEEDS="..." to change) is what tells a real change from noise
 # (docs/FINDINGS.md). Runs 4 at a time.
-# Prints: runs, walls, contacts capped at 50 per run (two cars stuck together count thousands of
+# Prints the 5 runs with most wall hits, then: runs, walls, contacts capped at 50 per run (two cars stuck together count thousands of
 # contacts and would hide everything else), runs with a pile-up (> 50), contacts after the scenario
 # (capped the same way), DNFs and the mean best lap. Exits 1 if any run printed no result table —
 # a run that compared nothing is red.
@@ -19,10 +19,13 @@ one() {
   [ "$rows" -eq "$cars" ] || { echo "BAD $1: $rows result rows"; return; }
   a=$(sed -nE 's/.*contacts after scenario: ([0-9]+).*/\1/p' <<<"$out")
   awk -v a="$a" '/^ +[0-9]+ /{w+=$6; c+=$7; if($5=="DNF")d++; else {l+=$4; n++}}
-    END{print "OK", w+0, c+0, a+0, d+0, l+0, n+0}' <<<"$out"
+    END{print "OK", w+0, c+0, a+0, d+0, l+0, n+0, "'"$1"'"}' <<<"$out"
 }
 export -f one; export bench
 results=$(xargs -P 4 -I{} bash -c 'one "$@"' _ {} <<<"$jobs")
 if grep -q '^BAD' <<<"$results"; then grep '^BAD' <<<"$results" >&2; exit 1; fi
+# The 5 runs with most wall hits (walls are not capped: one car stuck scraping a wall can carry
+# the total), then the summary on the last line.
+sort -k2,2nr <<<"$results" | head -5 | awk '{print "top walls:", $2, "contacts:", $3, "run:", $8, $9, $10, $11}'
 awk '{runs++; w+=$2; c+=($3>50?50:$3); pile+=($3>50); a+=($4>50?50:$4); d+=$5; l+=$6; n+=$7}
   END{printf "runs %d walls %d contacts %d pileups %d after_scenario %d dnf %d mean_best_lap %.2f\n", runs, w, c, pile, a, d, (n?l/n:0)}' <<<"$results"

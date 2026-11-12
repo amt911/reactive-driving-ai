@@ -1,7 +1,7 @@
 //! Headless race / scenario runner. Prints results and the AI's cost per tick.
 //!
 //! cargo run --release -p rdai-sim --bin bench -- [--cars N] [--laps L] [--track default|oval|proc:SEED|FILE.csv]
-//!     [--scenario race|crash|debris] [--seed N]
+//!     [--scenario race|crash|debris] [--seed N] [--trace FILE.csv [--trace-car N]]
 
 use rdai_sim::{default_field, tracks, World};
 
@@ -50,6 +50,8 @@ fn main() {
     let mut contacts_after = 0usize;
     // --trace FILE: CSV of car 0 every 0.1 s (time, s, d, line offset, speed, target, mode, steer, throttle,
     // brake, wall hits, own line offset, own line offset 60 m ahead, line offset 60 m ahead).
+    // --trace-car N: which car the trace follows (default 0, the pole sitter).
+    let trace_car: usize = get("--trace-car").and_then(|v| v.parse().ok()).unwrap_or(0).min(cars.saturating_sub(1));
     let mut trace = get("--trace").map(|p| std::io::BufWriter::new(std::fs::File::create(p).expect("trace file")));
     let mut steps = 0u64;
     while !w.finished() && w.time < 60.0 * 30.0 {
@@ -57,7 +59,7 @@ fn main() {
         steps += 1;
         if let (Some(f), true) = (trace.as_mut(), steps.is_multiple_of(12)) {
             use std::io::Write;
-            let c = &w.cars[0];
+            let c = &w.cars[trace_car];
             let pr = w.track.project(c.state.position, None);
             let plan = c.agent.last_plan().copied();
             let _ = writeln!(
