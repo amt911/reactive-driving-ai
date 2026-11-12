@@ -39,7 +39,8 @@ func _initialize() -> void:
 		var a := k / 720.0 * TAU
 		dense.append(Vector2(A * cos(a), B * sin(a)))
 	track = ClassDB.instantiate("RdaiTrack")
-	# What this VehicleBody3D can do, measured with this script (see the PR): the AI plans with it.
+	# The envelope the AI plans with. A guess, on the safe side for this VehicleBody3D: it also laps
+	# with the GT defaults (26.9 s, top 41 m/s), so it can do more. Measure your own car and set these.
 	track.max_lat_accel = 7.0
 	track.max_accel = 4.0
 	track.max_brake = 7.0
