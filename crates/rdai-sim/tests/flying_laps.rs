@@ -7,7 +7,7 @@
 //! Not a unit test: tracking error at 66 m/s comes from the controller and the physics over a
 //! whole sweep, and it only appears on flying laps.
 //!
-//! Sabotage seen failing: `PlannerParams::default().consistency_tolerance` back to 1.0 -> proc:4
+//! Sabotage seen failing: `PlannerParams::default().consistency_tolerance_alone` 1.0 -> proc:4
 //! walls on laps 3 and 5.
 
 use rdai_sim::{default_field, tracks, World};

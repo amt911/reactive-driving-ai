@@ -59,6 +59,9 @@ impl Default for AgentConfig {
 /// Gap (m) kept to anything behind while reversing out of a stuck position.
 const REVERSE_CLEARANCE: f32 = 1.5;
 
+/// Steering (rad) per radian of heading error while backing off. Guess: full lock at ~0.5 rad.
+const REVERSE_STEER_GAIN: f32 = 1.0;
+
 #[derive(Clone, Debug)]
 pub struct Agent {
     pub geometry: VehicleGeometry,
@@ -201,6 +204,7 @@ impl Agent {
             self.planner.rebase(local.line.offset_at(track, x) - b, replan == Replan::Restarted);
         }
         let line = &local.line;
+        self.planner.alone = alone;
         let mut plan = self.planner.plan(track, line, &ego, obs.position, pr.index, obstacles, &drv);
         self.driver.update(dt, plan.blocked);
 
@@ -273,7 +277,11 @@ impl Agent {
             reverse = 1;
             throttle = 0.5;
             brake = 0.0;
-            steer = -steer;
+            // Back off straight along the track: in reverse, steering towards the heading error
+            // turns the nose back towards the track direction. Mirroring the forward steering
+            // instead backed a car wedged by the wall into the wall, where it pushed for the whole
+            // reverse (docs/FINDINGS.md).
+            steer = (REVERSE_STEER_GAIN * heading_error).clamp(-self.geometry.max_steer, self.geometry.max_steer);
         } else if self.reverse_time > 0.0 {
             // Something behind: stop backing off (look in the mirror before reversing).
             self.reverse_time = 0.0;

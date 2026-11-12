@@ -13,7 +13,7 @@ fn car_stuck_against_an_obstacle_backs_off_and_goes_round() {
     let (s0, d0) = (w.cars[0].s, w.track.project(w.cars[0].state.position, None).d);
     // Front bumper at +2.3 m; debris centre 3.5 m ahead: 0 m gap, dead ahead.
     w.drop_debris(0, 3.5, d0, 1.2);
-    let s_debris = s0 + 3.5;
+    let s_debris = s0 + 3.6;
     let mut passed_at = None;
     while w.time < 20.0 {
         w.step(1.0 / 120.0);
@@ -54,4 +54,33 @@ fn reversing_never_backs_into_the_car_behind() {
         touched |= w.new_contacts.iter().any(|c| (c.a == 0 && c.b == 2) || (c.a == 2 && c.b == 0));
     }
     assert!(!touched, "the stuck car backed into the parked car behind it");
+}
+
+/// Wedged between debris and the wall: the car stopped 2.1 m from the wall with debris (r = 1.2 m)
+/// 3.6 m ahead, leaving a 3.2 m gap by the wall — the geometry of a car that never finished a race
+/// (proc:1 seed 5, 10 cars, debris). Backing off with the forward steering mirrored put its tail
+/// into the wall, where it pushed for the whole reverse, then drove back into the same gap, for
+/// ever. Within 40 s it must be 10 m past the debris.
+/// Sabotage seen failing: reverse steering back to `steer = -steer` -> still wedged, ds -9 m.
+#[test]
+fn car_wedged_between_debris_and_wall_gets_out() {
+    let mut w = World::new(&tracks::default_circuit(), &default_field(1), 1);
+    let s0 = w.cars[0].s;
+    let (wl, _) = w.track.widths_at(s0);
+    let d_car = wl - 2.06;
+    w.cars[0].state.position = w.track.to_world(s0, d_car);
+    w.drop_debris(0, 3.6, d_car - 2.37, 1.2);
+    let s_debris = s0 + 3.6;
+    let mut passed = false;
+    while w.time < 40.0 && !passed {
+        w.step(1.0 / 120.0);
+        passed = w.track.delta_s(s_debris, w.cars[0].s) > 10.0;
+    }
+    let c = &w.cars[0];
+    assert!(
+        passed,
+        "still wedged after 40 s: ds {:.1} m, d {:.2}",
+        w.track.delta_s(s_debris, c.s),
+        w.track.project(c.state.position, None).d
+    );
 }
