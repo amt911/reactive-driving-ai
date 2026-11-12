@@ -50,6 +50,11 @@ pub struct PlannerParams {
     pub runoff: f32,
     /// Obstacles further than this (m) are ignored.
     pub perception_range: f32,
+    /// Lateral distance (m) from the previous plan under which the new plan starts from the
+    /// previous plan's state instead of the measured one (temporal consistency, Werling 2010).
+    pub consistency_tolerance: f32,
+    /// Clearance from the track edge (m) under which a path starts to cost.
+    pub edge_margin: f32,
 }
 
 impl Default for PlannerParams {
@@ -66,6 +71,8 @@ impl Default for PlannerParams {
             standstill_gap: 2.0,
             runoff: 1.5,
             perception_range: 160.0,
+            consistency_tolerance: 1.0,
+            edge_margin: 1.0,
         }
     }
 }
@@ -113,6 +120,14 @@ impl Quintic {
         let x = s.min(self.horizon);
         let c = &self.c;
         c[0] + x * (c[1] + x * (c[2] + x * (c[3] + x * (c[4] + x * c[5]))))
+    }
+    #[inline]
+    pub fn first(&self, s: f32) -> f32 {
+        if s >= self.horizon {
+            return 0.0;
+        }
+        let c = &self.c;
+        c[1] + s * (2.0 * c[2] + s * (3.0 * c[3] + s * (4.0 * c[4] + s * 5.0 * c[5])))
     }
     #[inline]
     pub fn second(&self, s: f32) -> f32 {
@@ -198,19 +213,42 @@ impl ObsFrenet {
 }
 
 const COLLISION_COST: f32 = 1.0e4;
+/// Below this speed (m/s) every plan starts from the measured state (no temporal consistency).
+const CONSISTENCY_MIN_SPEED: f32 = 5.0;
+/// Cost per m/s of speed lost by staying behind a leader.
+const SPEED_LOSS_COST: f32 = 1.2;
 
 /// Reusable planner (keeps buffers and the previous choice for hysteresis).
 #[derive(Clone, Debug)]
 pub struct Planner {
     pub params: PlannerParams,
     prev_delta: f32,
+    /// Previous plan (start s, lateral profile) for temporal consistency.
+    prev_plan: Option<(f32, Quintic)>,
     obstacles: Vec<ObsFrenet>,
     pub debug: Option<Vec<CandidateDebug>>,
 }
 
 impl Planner {
     pub fn new(params: PlannerParams) -> Self {
-        Planner { params, prev_delta: 0.0, obstacles: Vec::with_capacity(32), debug: None }
+        Planner { params, prev_delta: 0.0, prev_plan: None, obstacles: Vec::with_capacity(32), debug: None }
+    }
+
+    /// Arc length where the previous choice's end offset applies (end of its transition).
+    pub fn prev_end_s(&self) -> Option<f32> {
+        self.prev_plan.map(|(s0, q)| s0 + q.horizon)
+    }
+
+    /// The reference line moved by `shift` metres at [`prev_end_s`](Self::prev_end_s): keep the
+    /// previous choice where it is on the road (its offset is relative to the line). `restart`:
+    /// the line was re-pinned at the car, so the previous lateral plan no longer means anything —
+    /// dropped. Without this a car avoiding debris 3 m off its line, re-pinned there, read its
+    /// "+3 m" choice as 6 m off the new line and steered back into the debris (measured).
+    pub fn rebase(&mut self, shift: f32, restart: bool) {
+        self.prev_delta -= shift;
+        if restart {
+            self.prev_plan = None;
+        }
     }
 
     /// Plans one tick. `obstacles` are in world coordinates; anything out of range is ignored.
@@ -241,22 +279,38 @@ impl Planner {
             let window = (dist / track.spacing()) as usize + 8;
             let pr = track.project_window(o.position, ego_index, window);
             let rel = wrap_angle(o.heading - track.heading_at(pr.s));
+            let ext = frenet_extent(o.length, o.width, rel);
             self.obstacles.push(ObsFrenet {
                 s: pr.s,
                 d: pr.d,
                 v_s: o.speed * rel.cos(),
                 v_d: o.speed * rel.sin(),
                 accel: o.accel * rel.cos(),
-                half_len: 0.5 * o.length,
-                half_wid: 0.5 * o.width,
+                half_len: ext.0,
+                half_wid: ext.1,
             });
         }
 
         // 2. Lateral state relative to the reference line.
         let line_d = line.offset_at(track, ego.s);
         let line_slope = (line.offset_at(track, ego.s + 1.0) - line.offset_at(track, ego.s - 1.0)) * 0.5;
-        let e0 = ego.d - line_d;
-        let de0 = ego.heading_error.clamp(-1.2, 1.2).tan() - line_slope;
+        let mut e0 = ego.d - line_d;
+        let mut de0 = ego.heading_error.clamp(-1.2, 1.2).tan() - line_slope;
+        // Temporal consistency (Werling et al. 2010): while the car is close to the previous plan,
+        // start from where that plan says it should be, so tracking errors are corrected by the
+        // controller instead of being absorbed into every new plan.
+        // Only while driving: stopped, the plan never advances and a stale slope (say, towards
+        // debris) would be inherited for ever (docs/FINDINGS.md).
+        if let (Some((s_prev, q_prev)), true) = (self.prev_plan, v > CONSISTENCY_MIN_SPEED) {
+            let sigma = track.delta_s(s_prev, ego.s);
+            if sigma >= 0.0 && sigma < q_prev.horizon {
+                let e_prev = q_prev.value(sigma);
+                if (e_prev - e0).abs() < p.consistency_tolerance {
+                    e0 = e_prev;
+                    de0 = q_prev.first(sigma);
+                }
+            }
+        }
         let horizon = (v * p.horizon_time).max(p.min_horizon);
         let transition = (v * p.transition_time).max(p.min_transition).min(horizon);
         let s_end = ego.s + transition;
@@ -279,6 +333,25 @@ impl Planner {
         deltas[count + 1] = self.prev_delta.clamp(lo, hi.max(lo));
         count += 2;
 
+        // Speed a candidate allows: line speed scaled by grip, capped by the candidate's own path
+        // curvature, within the braking envelope over the horizon (from `from` metres ahead on).
+        let a_lat = line.limits.max_lat_accel * grip;
+        let envelope = |q: &Quintic, from: f32| {
+            let mut best = f32::INFINITY;
+            for k in 0..=p.samples {
+                let sigma = from + (horizon - from) * k as f32 / p.samples as f32;
+                let s = ego.s + sigma;
+                let idx = track.index_at(s).0;
+                let kappa = (line.curvature[idx] + q.second(sigma)).abs();
+                let mut vk = line.speed_at(track, s) * grip.sqrt();
+                if kappa > 1e-4 {
+                    vk = vk.min((a_lat / kappa).sqrt());
+                }
+                best = best.min((vk * vk + 2.0 * b_eff * (sigma - from)).sqrt());
+            }
+            best
+        };
+
         if let Some(dbg) = self.debug.as_mut() {
             dbg.clear();
         }
@@ -299,9 +372,15 @@ impl Planner {
                 cost += 40.0 * e2 * e2 * horizon / p.samples as f32;
                 // Track bounds: soft inside the run-off, prohibitive beyond it.
                 let (wl, wr) = track.widths_at(s);
-                let over = (d + half_w - wl).max(-wr - d + half_w).max(0.0);
+                let over = (d + half_w - wl).max(-wr - d + half_w);
                 if over > 0.0 {
                     cost += if over > p.runoff { COLLISION_COST } else { 200.0 * over * over };
+                }
+                // Keep clear of the edge too: a path 0.2 m from the wall turns any tracking error
+                // into a wall hit (docs/FINDINGS.md). Same shape as the margin kept from obstacles.
+                let near = over + p.edge_margin;
+                if near > 0.0 {
+                    cost += 6.0 * near * near;
                 }
                 // Obstacles.
                 let t = sigma / v.max(3.0);
@@ -316,7 +395,12 @@ impl Planner {
                     if ds.abs() < reach_s && clearance < drv.lateral_margin * 0.5 {
                         // Contact: classify by where the obstacle is now.
                         let gap0 = track.delta_s(ego.s, o.s) - 0.5 * p.length - o.half_len;
-                        if gap0 > 0.0 {
+                        // In front also when already touching: centre ahead and overlapping
+                        // sideways. Classed "alongside", a car rear-ending another kept accelerating
+                        // into it (docs/FINDINGS.md).
+                        let in_front = track.delta_s(ego.s, o.s) > 0.0 && (ego.d - o.d).abs() < half_w + o.half_wid;
+                        if gap0 > 0.0 || in_front {
+                            let gap0 = gap0.max(0.0);
                             // Ahead of us: survivable only if we can stop behind where it ends up.
                             let room = gap0 - p.standstill_gap + o.stopping_distance();
                             let need = v * v / (2.0 * b_eff);
@@ -331,9 +415,15 @@ impl Planner {
                                 cost += COLLISION_COST + 1.0e3 * impact.max(0.0);
                             }
                         } else if gap0 > -(p.length + 2.0 * o.half_len) {
-                            // Alongside: never steer into it.
-                            collides = true;
-                            cost += COLLISION_COST;
+                            // Alongside: never steer into it — but holding the current gap is
+                            // safe. Counting every path as a collision (the one that keeps its
+                            // lane included) made a car being overtaken brake in Emergency
+                            // (docs/FINDINGS.md).
+                            let clearance_now = (ego.d - o.d).abs() - half_w - o.half_wid;
+                            if clearance < clearance_now - 0.1 {
+                                collides = true;
+                                cost += COLLISION_COST;
+                            }
                         }
                         // Behind us: its job to avoid us.
                     } else if clearance < drv.lateral_margin + 0.5 && ds.abs() < reach_s + 6.0 {
@@ -346,7 +436,7 @@ impl Planner {
                 // Speed lost by staying behind this obstacle.
                 let v_line = line.speed_at(track, ego.s + horizon);
                 let lost = (v_line - v_cap).max(0.0);
-                cost += 1.2 * lost;
+                cost += SPEED_LOSS_COST * lost;
                 let _ = oi;
             }
             if ci == count - 2 && leader.is_some() {
@@ -361,29 +451,14 @@ impl Planner {
         }
         let (cost, q, delta, leader, collides) = best.expect("at least two candidates");
         self.prev_delta = delta;
+        self.prev_plan = Some((ego.s, q));
 
         // 4. Speed: line speed scaled by grip, path curvature, braking envelope over the horizon.
         //    Evaluated now and a short preview ahead; their difference is the feedforward
         //    deceleration, so braking starts on time instead of lagging a P loop.
-        let a_lat = line.limits.max_lat_accel * grip;
-        let envelope = |from: f32| {
-            let mut best = f32::INFINITY;
-            for k in 0..=p.samples {
-                let sigma = from + (horizon - from) * k as f32 / p.samples as f32;
-                let s = ego.s + sigma;
-                let idx = track.index_at(s).0;
-                let kappa = (line.curvature[idx] + q.second(sigma)).abs();
-                let mut vk = line.speed_at(track, s) * grip.sqrt();
-                if kappa > 1e-4 {
-                    vk = vk.min((a_lat / kappa).sqrt());
-                }
-                best = best.min((vk * vk + 2.0 * b_eff * (sigma - from)).sqrt());
-            }
-            best
-        };
         let preview = (v * 0.25).max(2.0);
-        let mut target = envelope(0.0);
-        let ahead = envelope(preview);
+        let mut target = envelope(&q, 0.0);
+        let ahead = envelope(&q, preview);
         let accel_ff =
             ((ahead * ahead - target * target) / (2.0 * preview)).clamp(-line.limits.max_brake, line.limits.max_accel);
 
@@ -423,6 +498,14 @@ impl Planner {
     }
 }
 
+/// Half extents (along the track, across it) of an `length` x `width` car at `rel` radians from
+/// the track's heading: the axis-aligned box around the rotated rectangle. A car spun across the
+/// track is as wide as it is long; taken as aligned, followers passed it 1.25 m too close.
+fn frenet_extent(length: f32, width: f32, rel: f32) -> (f32, f32) {
+    let (s, c) = (rel.sin().abs(), rel.cos().abs());
+    (0.5 * (length * c + width * s), 0.5 * (length * s + width * c))
+}
+
 /// World point of a plan at `sigma` metres ahead of its start (for steering and drawing).
 pub fn plan_point(track: &Track, line: &RacingLine, s0: f32, q: &Quintic, sigma: f32) -> Vec2 {
     let s = s0 + sigma;
@@ -431,7 +514,34 @@ pub fn plan_point(track: &Track, line: &RacingLine, s0: f32, q: &Quintic, sigma:
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn rebase_keeps_the_previous_choice_in_place_and_drops_the_plan_on_restart() {
+        let mut p = Planner::new(PlannerParams::default());
+        assert_eq!(p.prev_end_s(), None);
+        p.prev_delta = 3.0;
+        p.prev_plan = Some((100.0, Quintic::new(0.0, 0.0, 3.0, 40.0)));
+        assert_eq!(p.prev_end_s(), Some(140.0));
+        // The line moved 2 m towards the choice: the same spot is now 1 m off it.
+        p.rebase(2.0, false);
+        assert_eq!(p.prev_delta, 1.0);
+        assert!(p.prev_plan.is_some(), "a stitched move keeps the plan");
+        p.rebase(1.0, true);
+        assert_eq!(p.prev_delta, 0.0);
+        assert!(p.prev_plan.is_none(), "a restart drops it");
+    }
+
     use super::*;
+
+    #[test]
+    fn a_car_across_the_track_is_as_wide_as_it_is_long() {
+        let close = |a: (f32, f32), b: (f32, f32)| (a.0 - b.0).abs() < 1e-5 && (a.1 - b.1).abs() < 1e-5;
+        // 4.5 x 2.0 m car: aligned, across, and at 45 degrees (both extents (L + W) / (2 sqrt 2)).
+        assert!(close(frenet_extent(4.5, 2.0, 0.0), (2.25, 1.0)));
+        assert!(close(frenet_extent(4.5, 2.0, std::f32::consts::FRAC_PI_2), (1.0, 2.25)));
+        assert!(close(frenet_extent(4.5, 2.0, std::f32::consts::PI), (2.25, 1.0)));
+        let k = 6.5 / (2.0 * std::f32::consts::SQRT_2);
+        assert!(close(frenet_extent(4.5, 2.0, -std::f32::consts::FRAC_PI_4), (k, k)));
+    }
 
     #[test]
     fn quintic_meets_boundary_conditions() {

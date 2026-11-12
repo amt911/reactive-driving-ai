@@ -221,7 +221,8 @@ timings stop being enough.
 /
 ├── crates/
 │   ├── rdai-core/     # pure, deterministic, f32, no deps: math, track (Frenet s/d, TUMFTM CSV),
-│   │                  #   racing_line (min curvature), speed_profile (friction ellipse fwd/bwd),
+│   │                  #   racing_line (min curvature), min_curvature (exact window QP), local_line
+│   │                  #   (agent's own line, re-planned ahead), speed_profile (friction ellipse fwd/bwd),
 │   │                  #   planner (Werling-style Frenet lattice + IDM + emergency), control (pure
 │   │                  #   pursuit + speed loop), driver (experience/stamina/aggression), agent, rng
 │   ├── rdai-sim/      # vehicle.rs, world.rs (N cars, walls, contacts, slipstream, laps), tracks.rs,

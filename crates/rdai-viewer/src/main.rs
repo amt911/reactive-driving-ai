@@ -155,7 +155,7 @@ async fn main() {
         let palette = [RED, BLUE, GOLD, MAGENTA, SKYBLUE, LIME, PINK, VIOLET, BROWN, BEIGE, DARKBLUE, PURPLE];
         for (i, c) in w.cars.iter().enumerate() {
             if show_plans && (i == selected || zoom > 2.0) {
-                c.agent.plan_polyline(&w.track, &w.line, &mut path);
+                c.agent.plan_polyline(&w.track, &mut path);
                 let col = if i == selected { Color::new(0.2, 1.0, 0.4, 0.9) } else { Color::new(1.0, 1.0, 1.0, 0.25) };
                 for s in path.windows(2) {
                     let (a, b) = (to_s(s[0]), to_s(s[1]));

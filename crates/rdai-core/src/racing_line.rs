@@ -1,10 +1,15 @@
-//! Offline racing line: minimum-curvature path inside the track (Braghin et al. 2008;
-//! Heilmeier et al. 2019 solve the same objective as a QP). Here it is solved by projected gradient
-//! descent on the lateral offsets, coarse-to-fine so long corners converge in milliseconds.
+//! Racing line: minimum-curvature path inside the track (Braghin et al. 2008; Heilmeier et al. 2019
+//! solve the same objective as a QP). Projected gradient descent on the lateral offsets,
+//! coarse-to-fine, finds the large-scale shape in milliseconds; overlapping windows of the exact QP
+//! (`min_curvature.rs`, block Gauss-Seidel) then polish it to the optimum. Measured on the default
+//! circuit: ideal lap 63.39 -> 63.23 s. Being a fixed point of the window
+//! solver is what lets an agent re-plan windows ahead of it without the line shifting under it
+//! (`local_line.rs`).
 //!
 //! Computed once per track and vehicle class; agents only read it.
 
 use crate::math::{menger_curvature, Vec2};
+use crate::min_curvature::{WindowQp, FREE};
 use crate::speed_profile::{self, VehicleLimits};
 use crate::track::Track;
 
@@ -70,6 +75,7 @@ impl RacingLine {
             stride = half;
             iterations = (iterations / 2).max(200);
         }
+        polish(track, &mut offset, params.margin);
 
         Self::from_offsets(track, offset, limits)
     }
@@ -111,6 +117,32 @@ impl RacingLine {
         let steps = (ahead / track.spacing()).ceil() as usize + 1;
         let n = self.speed.len();
         (0..steps).map(|k| self.speed[(i0 + k) % n]).fold(f32::MAX, f32::min)
+    }
+}
+
+/// Samples per polishing window (200 m at 2 m spacing) and sweeps round the lap: measured, the
+/// objective settles after 2 sweeps on the default circuit (0.6277, 0.6282, 0.6282...).
+const POLISH_WINDOW: usize = 100;
+const POLISH_SWEEPS: usize = 3;
+
+/// Block Gauss-Seidel round the closed line: each window solved exactly with its ends pinned to the
+/// current offsets, a quarter window apart.
+fn polish(track: &Track, offset: &mut [f32], margin: f32) {
+    let n = track.len();
+    let w = POLISH_WINDOW.min(n.saturating_sub(4));
+    if w < 8 {
+        return;
+    }
+    let mut qp = WindowQp::new(w);
+    let mut bound = vec![FREE; n];
+    for _ in 0..POLISH_SWEEPS {
+        let mut i0 = 0;
+        while i0 < n {
+            let at = |j: usize| offset[(i0 + j) % n];
+            let (start, end) = ((at(0), at(1)), (at(w - 2), at(w - 1)));
+            qp.solve(track, i0, margin, start, end, offset, &mut bound, None);
+            i0 += w / 4;
+        }
     }
 }
 
@@ -163,6 +195,58 @@ mod tests {
         let n = line.offset.len();
         let jump = (0..n).map(|i| (line.offset[(i + 1) % n] - line.offset[i]).abs()).fold(0.0, f32::max);
         assert!(jump < 0.05, "jump {jump}");
+    }
+
+    #[test]
+    fn bending_relative_to_the_line_itself_does_not_move_it() {
+        // The relative term is zero on its anchor, so anchored to the line the window still solves
+        // back to the line (what lets local_line.rs use it without the line drifting).
+        let t = circle_free_rect();
+        let line = RacingLine::build(&t, &LineParams::default(), &VehicleLimits::default());
+        let n = t.len();
+        let mut qp = WindowQp::new(100);
+        let mut bound = vec![FREE; n];
+        let mut off = line.offset.clone();
+        let at = |o: &[f32], j: usize| o[(90 + j) % n];
+        let (start, end) = ((at(&off, 0), at(&off, 1)), (at(&off, 98), at(&off, 99)));
+        qp.solve(&t, 90, 1.5, start, end, &mut off, &mut bound, Some((&line.offset, 4.0)));
+        let worst = (0..n).map(|i| (off[i] - line.offset[i]).abs()).fold(0.0, f32::max);
+        assert!(worst < 0.05, "moved the line by {worst} m");
+    }
+
+    #[test]
+    fn the_line_is_a_fixed_point_of_the_window_solver() {
+        // What local_line.rs relies on: a window cut out of the line and solved again with its ends
+        // pinned to the line gives the line back, so re-planning ahead does not move it.
+        let t = circle_free_rect();
+        let line = RacingLine::build(&t, &LineParams::default(), &VehicleLimits::default());
+        let n = t.len();
+        let mut qp = WindowQp::new(100);
+        let mut bound = vec![FREE; n];
+        for i0 in [0, 37, 90, 151] {
+            let mut off = line.offset.clone();
+            let at = |j: usize| off[(i0 + j) % n];
+            let (start, end) = ((at(0), at(1)), (at(98), at(99)));
+            qp.solve(&t, i0, 1.5, start, end, &mut off, &mut bound, None);
+            let worst = (0..n).map(|i| (off[i] - line.offset[i]).abs()).fold(0.0, f32::max);
+            assert!(worst < 0.05, "window at {i0} moved the line by {worst} m");
+        }
+    }
+
+    fn circle_free_rect() -> Track {
+        let pts = [
+            (0.0, 0.0),
+            (200.0, 0.0),
+            (220.0, 20.0),
+            (220.0, 120.0),
+            (200.0, 140.0),
+            (0.0, 140.0),
+            (-20.0, 120.0),
+            (-20.0, 20.0),
+        ];
+        let ctrl: Vec<TrackPoint> =
+            pts.iter().map(|&(x, y)| TrackPoint { x, y, width_left: 7.0, width_right: 7.0 }).collect();
+        Track::from_control_points(&ctrl, 2.0).unwrap()
     }
 
     #[test]

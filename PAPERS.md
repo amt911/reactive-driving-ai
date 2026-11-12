@@ -22,6 +22,14 @@ sección en el comentario del código (reglas en
 | Braghin 2008 | F. Braghin, F. Cheli, S. Melzi, E. Sabbioni, «Race driver model», *Computers & Structures* 86, 2008. | `racing_line.rs`: trazada de mínima curvatura | — |
 | Rajamani | R. Rajamani, *Vehicle Dynamics and Control*, 2.ª ed., Springer, 2012, cap. 2 (modelos de bicicleta cinemático y dinámico). | `rdai-sim/vehicle.rs`; gradiente de subviraje en `control.rs` | — |
 | Velenis & Tsiotras 2005 | E. Velenis, P. Tsiotras, «Optimal velocity profile generation for given acceleration limits: theoretical analysis», *American Control Conference*, 2005. | `speed_profile.rs`: perfil de velocidad de tiempo mínimo sobre la elipse de fricción | — |
+| Milliken 1995 | W. F. Milliken, D. L. Milliken, *Race Car Vehicle Dynamics*, SAE, 1995, cap. 2 (círculo de fricción). | `agent.rs`: frenada en curva limitada por el agarre que usa el giro (*trail braking*) | — |
+| ForzaETH 2024 | N. Baumann et al., «ForzaETH Race Stack — Scaled Autonomous Head-to-Head Racing on Fully Commercial off-the-Shelf Hardware», arXiv:2403.11784, 2024 (controlador MAP). | Candidato para sustituir pure pursuit (aún no usado) | — |
+| GripMap 2025 | «GripMap: An Efficient, Spatially Resolved Constraint Framework for Offline and Online Trajectory Planning in Autonomous Racing», arXiv:2504.12115, 2025. | Coste de agarre por candidato: probado y rechazado (docs/FINDINGS.md) | — |
+| A2RL 2026 | «Head-to-Head autonomous racing at the limits of handling in the A2RL challenge», arXiv:2602.08571, 2026. | Referencia del siguiente diseño del planificador (trayectorias relativas a la trazada) | — |
+| Nocedal & Wright 2006 | J. Nocedal, S. J. Wright, *Numerical Optimization*, 2.ª ed., Springer, 2006, cap. 16 (programación cuadrática, conjunto activo primal, alg. 16.3). | `min_curvature.rs`: QP de mínima curvatura con límites de pista. | No (de memoria; comprobar el número del algoritmo) |
+| Mayne 2000 | D. Q. Mayne, J. B. Rawlings, C. V. Rao, P. O. M. Scokaert, «Constrained model predictive control: Stability and optimality», *Automatica* 36(6), 2000. | `local_line.rs`: condición terminal del horizonte deslizante (el final de la ventana se une al plan de vuelta). | No |
+| Betz 2022 | J. Betz et al., «Autonomous Vehicles on the Edge: A Survey on Autonomous Vehicle Racing», *IEEE Open Journal of Intelligent Transportation Systems* 3, 2022. | `local_line.rs`: arquitectura de dos niveles (trazada global + planificación local). | No |
+| Fan 2018 | H. Fan et al., «Baidu Apollo EM Motion Planner», arXiv:1807.08048, 2018. | `local_line.rs`: *stitching* (el nuevo plan empieza en el anterior mientras el coche lo siga). | No |
 
 ## Lo que necesito que busques
 

@@ -1,7 +1,7 @@
 //! Headless race / scenario runner. Prints results and the AI's cost per tick.
 //!
 //! cargo run --release -p rdai-sim --bin bench -- [--cars N] [--laps L] [--track default|oval|proc:SEED|FILE.csv]
-//!     [--scenario race|crash|debris]
+//!     [--scenario race|crash|debris] [--seed N]
 
 use rdai_sim::{default_field, tracks, World};
 
@@ -19,7 +19,8 @@ fn main() {
     };
 
     let t_build = std::time::Instant::now();
-    let mut w = World::new(&track, &default_field(cars), laps);
+    let seed: u64 = get("--seed").and_then(|v| v.parse().ok()).unwrap_or(0x5EED);
+    let mut w = World::new_seeded(&track, &default_field(cars), laps, seed);
     println!(
         "track {:.0} m, {} samples; racing line + speed profile built in {:.1} ms; ideal lap {:.2} s",
         w.track.length(),
@@ -47,7 +48,8 @@ fn main() {
     let dt = 1.0 / 120.0;
     let mut injected = false;
     let mut contacts_after = 0usize;
-    // --trace FILE: CSV of car 0 every 0.1 s (time, s, d, line offset, speed, target, mode, steer, throttle, brake).
+    // --trace FILE: CSV of car 0 every 0.1 s (time, s, d, line offset, speed, target, mode, steer, throttle,
+    // brake, wall hits, own line offset, own line offset 60 m ahead, line offset 60 m ahead).
     let mut trace = get("--trace").map(|p| std::io::BufWriter::new(std::fs::File::create(p).expect("trace file")));
     let mut steps = 0u64;
     while !w.finished() && w.time < 60.0 * 30.0 {
@@ -60,7 +62,7 @@ fn main() {
             let plan = c.agent.last_plan().copied();
             let _ = writeln!(
                 f,
-                "{:.2},{:.1},{:.2},{:.2},{:.2},{:.2},{},{:.3},{:.2},{:.2},{}",
+                "{:.2},{:.1},{:.2},{:.2},{:.2},{:.2},{},{:.3},{:.2},{:.2},{},{:.2},{:.2},{:.2}",
                 w.time,
                 pr.s,
                 pr.d,
@@ -71,7 +73,10 @@ fn main() {
                 c.controls.steer,
                 c.controls.throttle,
                 c.controls.brake,
-                c.wall_hits
+                c.wall_hits,
+                c.agent.line().map(|l| l.offset_at(&w.track, pr.s)).unwrap_or(0.0),
+                c.agent.line().map(|l| l.offset_at(&w.track, pr.s + 60.0)).unwrap_or(0.0),
+                w.line.offset_at(&w.track, pr.s + 60.0),
             );
         }
         if !injected && w.time > 25.0 && scenario != "race" {
