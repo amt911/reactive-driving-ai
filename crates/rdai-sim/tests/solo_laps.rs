@@ -8,6 +8,8 @@
 //! computed before any agent drives — not by the code under test.
 //!
 //! Sabotage seen failing: on `main` (2026-11-11) best lap 82.6 s vs 63.4 s ideal, 9 wall hits.
+//! Also (2026-11-12): `TRACK_INT_GAIN = 0.0` in `agent.rs` -> 4 wall hits; `TRAIL_BRAKE_FLOOR = 1.0`
+//! (no trail braking) -> 1 wall hit (lap-1 spin at s ≈ 650).
 
 use rdai_sim::{default_field, tracks, World};
 

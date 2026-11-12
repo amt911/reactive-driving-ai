@@ -63,23 +63,31 @@ hits, ~3.5 µs/tick**.
   through long corners (pure pursuit on body yaw under sideslip tracks with an offset ≈ β·ld), the
   plan diverges, consistency resets at 1 m and the reset plan brakes mid-corner (spin at s ≈ 650).
   The phantom slope was compensating the tracking drift.
-- *Parked on branch `exp/sideslip-tracking` (2026-11-12, not merged):* the course fix **plus** a
-  leaky integral (gain 0.03 rad/(m·s), τ 5 s) on the car's offset from its plan, integrated only
-  in Cruise and reset otherwise. Solo best lap 70.4 → 65.4 s (ideal 63.4) but **1 wall hit on lap
-  1**, so `solo_laps` stays red, and `followers_never_touch_a_car_that_crashes_ahead` goes red (the
-  crashed car, recovered 11 s later, touches a follower while rejoining). The lap-1 wall is the
-  braking-zone loop at s 480–640: drifting off while braking and turning, the return curvature
-  lowers the target, harder braking takes lateral grip, the car drifts further (spins at e ≈ −9 m).
-  Faster arrival with the course fix exposes it. That loop — the same one behind `planner_offset`
-  and the FFI round trip — is the next thing to fix; then this branch. On the 243 runs, against the branch before it:
-  walls 3659 → 3650, contacts 2934 → **2321**, pile-ups 21 → 15, after the scenario 1416 → **932**,
-  DNF 1 → 0, mean best lap 59.6 → **57.6 s**. Rejected on the same matrix: the integral in every
-  mode (gain 0.03: contacts 3931, pile-ups 38; gain 0.05: walls 5563, contacts 4984 — it winds up
-  during avoidance); gain 0.1 is unstable solo (37 walls); the gated integral without the course
-  fix (walls 2586 but contacts 3212, pile-ups 32); a per-candidate cost for the speed lost to the
-  candidate's own curvature, with a "hold the current offset" candidate (fixes `planner_offset`
-  and the FFI round trip, but walls 32884, contacts 8803: candidates flip between hold and
-  return and the steering oscillates into the wall; `curve-loss.patch`, out of git).
+- *Fixed (2026-11-12), three pieces in `Agent::tick`:* (1) the planner gets the **course**
+  (direction of the last displacement) instead of the body yaw; (2) a leaky **integral** (gain
+  0.03 rad/(m·s), τ 5 s) on the car's offset from its plan, integrated only in Cruise and reset
+  otherwise; (3) **trail braking** in Cruise: brake ≤ √(1 − (a_lat/a_max)²), floor 0.3, so braking
+  for the road never takes the grip the turn is using. (1)+(2) alone left a lap-1 spin at s ≈ 650:
+  drifting off while braking and turning, the return curvature lowered the target, harder braking
+  took lateral grip, the car drifted further — (3) breaks that loop. Solo best lap 70.4 → **65.4 s**
+  (ideal 63.4), 0 walls, `solo_laps` green. On the 243 runs, against the branch before it:
+
+  | variant | walls | contacts | pile-ups | after scenario | DNF | mean best lap |
+  |---|---|---|---|---|---|---|
+  | before | 3659 | 2934 | 21 | 1416 | 1 | 59.6 s |
+  | (1)+(2) | 3650 | 2321 | 15 | 932 | 0 | 57.6 s |
+  | (1)+(2)+(3) **kept** | **3132** | 3243 | 22 | 1294 | 1 | **54.9 s** |
+  | (1)+(2)+(3) in every mode | 5328 | 6428 | 88 | 3178 | 2 | 55.3 s |
+
+  (1)+(2) alone had fewer contacts but a wall on the solo lap and a contact in the crash journey;
+  (3) is kept because every behaviour test is green with it. Trail braking in every mode doubled
+  contacts: braking for a car ahead must stay whole.
+  Rejected on the same matrix: the integral in every mode (gain 0.03: contacts 3931, pile-ups 38;
+  0.05: walls 5563, contacts 4984 — it winds up during avoidance); gain 0.1 unstable solo (37
+  walls); the gated integral without the course fix (contacts 3212, pile-ups 32); a per-candidate
+  cost for the speed lost to the candidate's own curvature plus a "hold the current offset"
+  candidate (fixes `planner_offset` and the FFI round trip, but walls 32884, contacts 8803:
+  candidates flip between hold and return and the steering oscillates into the wall).
 
 **Cause (original suspicion).** Step 4 of `Planner::plan` (`crates/rdai-core/src/planner.rs`)
 evaluates `kappa = line.curvature[idx] + q.second(sigma)`. When the car is displaced laterally, the
