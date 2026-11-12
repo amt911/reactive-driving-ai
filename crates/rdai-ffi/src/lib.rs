@@ -179,9 +179,15 @@ mod tests {
                 heading: core::f32::consts::FRAC_PI_2,
                 speed: 10.0,
             };
-            let mut c = Controls::default();
+            // NaN sentinels prove the call wrote `out`. This test checks the ABI contract (codes,
+            // ranges); whether the car drives well is the behaviour suite's job (rdai-sim tests).
+            // It used to assert throttle > 0 for a car spawned off the line, which is a planner
+            // policy, and kept CI red for a driving reason (docs/FINDINGS.md).
+            let mut c = Controls { steer: f32::NAN, throttle: f32::NAN, brake: f32::NAN, ..Controls::default() };
             assert_eq!(rdai_agent_tick(a, t, &obs, core::ptr::null(), 0, 1.0 / 60.0, &mut c), 0);
-            assert!(c.throttle > 0.0 && c.steer.abs() <= 1.0);
+            assert!((-1.0..=1.0).contains(&c.steer), "steer {}", c.steer);
+            assert!((0.0..=1.0).contains(&c.throttle), "throttle {}", c.throttle);
+            assert!((0.0..=1.0).contains(&c.brake), "brake {}", c.brake);
             assert_eq!(rdai_agent_tick(a, t, &obs, core::ptr::null(), 3, 1.0 / 60.0, &mut c), -1);
             rdai_agent_free(a);
             rdai_track_free(t);

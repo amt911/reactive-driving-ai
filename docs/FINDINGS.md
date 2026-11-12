@@ -36,11 +36,15 @@ same (`steer 0.379 throttle 0.00 brake 0.41 mode 2`) but does not assert on it, 
 corner allows ~29 m/s (κ = a/b² = 0.015 1/m, 12.7 m/s² lateral), so braking is wrong.
 **Cause.** Unknown. Likely the same family as the bug above: the car starts off the racing line
 (e₀ ≠ 0, heading error vs the line), so the quintic's curvature enters the speed cap.
-**Fix.** Pending. The test was written but never run before 2026-11-11.
+**Fix.** Pending for the driving part, tracked by `crates/rdai-sim/tests/planner_offset.rs` (a car
+off the line gets a hard return; branch `fix/planner-braking`). The FFI test now checks only the ABI
+contract (2026-11-12): return codes, `out` written (NaN sentinels), steer in [-1, 1], throttle and
+brake in [0, 1]. Sabotage seen failing: `rdai_agent_tick` not writing `out` -> `steer NaN`.
+The test was written but never run before 2026-11-11.
 **Why it isn't obvious.** The C smoke script is green, so the ABI looked verified while the
 behaviour behind it was wrong — a check that never asserted on the result.
 
-Found: 2026-11-11 · core/planner, ffi · **Status: open**
+Found: 2026-11-11 · core/planner, ffi · **Status: FFI test split (2026-11-12); planner part open**
 
 ### FFI functions can unwind a panic into C
 
