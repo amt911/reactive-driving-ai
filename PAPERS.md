@@ -1,3 +1,23 @@
+# Lo que necesito que busques
+
+## 2026-11-12 16:48 — aprendizaje del agarre vuelta a vuelta (fase 2, `learning.rs`)
+
+El aprendizaje funciona (coche con 10 % menos de agarre: golpea solo en la vuelta 1), pero la
+ganancia (0,3) está medida en un solo escenario. Para fijarla con fundamento y comprobar las citas
+necesito el PDF de estos, que son de pago (IEEE):
+
+1. **Kapania & Gerdes**, «Path tracking of highly dynamic autonomous vehicle trajectories via
+   iterative learning control», *American Control Conference* 2015 — la regla de aprendizaje
+   vuelta a vuelta que cito (ganancia, filtro, estabilidad). Lo más útil.
+2. **Hsu, Laws & Gerdes**, «Estimation of tire slip angle and friction limits using steering
+   torque», *IEEE Trans. Control Systems Technology* 18(4), 2010 — estimar el agarre real a partir
+   de lo que hace el coche. Es la alternativa a mi señal actual («cuánto se abre de su línea»):
+   medir la aceleración lateral conseguida frente a la pedida.
+3. **Arimoto, Kawamura & Miyazaki**, «Bettering operation of robots by learning», *J. Robotic
+   Systems* 1(2), 1984 — el origen del ILC, solo para verificar la cita.
+
+Déjalos en `papers/` (local, no se sube). Los de arXiv ya los leo yo.
+
 # Fuentes
 
 Cada modelo y cada constante de `rdai-core` y `rdai-sim` cita aquí su fuente, con la ecuación o
@@ -17,6 +37,9 @@ sección en el comentario del código (reglas en
 | Treiber 2000 | M. Treiber, A. Hennecke, D. Helbing, «Congested traffic states in empirical observations and microscopic simulations», *Physical Review E* 62(2), 2000. | `planner.rs` paso 5: término de interacción del IDM (`s*`, hueco deseado) | — |
 | Coulter 1992 | R. C. Coulter, «Implementation of the Pure Pursuit Path Tracking Algorithm», CMU-RI-TR-92-01, Carnegie Mellon University, 1992. | `control.rs`: volante por pure pursuit | — |
 | Kapania & Gerdes 2015 | N. R. Kapania, J. C. Gerdes, «Design of a feedback-feedforward steering controller for accurate path tracking and stability at the limits of handling», *Vehicle System Dynamics* 53(12), 2015. | `control.rs`: *feedforward* de subviraje en el volante | — |
+| Arimoto 1984 | S. Arimoto, S. Kawamura, F. Miyazaki, «Bettering operation of robots by learning», *J. Robotic Systems* 1(2), 1984. | `learning.rs`: control por aprendizaje iterativo (ILC), el error de una repetición corrige la siguiente | — |
+| Kapania & Gerdes 2015b | N. R. Kapania, J. C. Gerdes, «Path tracking of highly dynamic autonomous vehicle trajectories via iterative learning control», *American Control Conference*, 2015. | `learning.rs`: ILC vuelta a vuelta en un coche de carreras | — |
+| Kalaria 2024 | D. Kalaria, Q. Lin, J. M. Dolan, «Adaptive Planning and Control with Time-Varying Tire Models for Autonomous Racing Using Extreme Learning Machine», *ICRA* 2024 (arXiv 2303.08235). | Alternativa estudiada: aprender el modelo de neumático en línea; aquí basta una escala de agarre por tramo | — |
 | Kapania 2016 | N. R. Kapania, J. Subosits, J. C. Gerdes, «A Sequential Two-Step Algorithm for Fast Generation of Vehicle Racing Trajectories», *ASME J. Dynamic Systems, Measurement, and Control* 138(9), 2016. | `speed_profile.rs`: pasadas hacia delante y hacia atrás | — |
 | Heilmeier 2019 | A. Heilmeier, A. Wischnewski, L. Hermansdorfer, J. Betz, M. Lienkamp, B. Lohmann, «Minimum curvature trajectory planning and control for an autonomous race car», *Vehicle System Dynamics*, 2019 (en línea; 58(10), 2020). | `racing_line.rs`: objetivo de mínima curvatura; formato CSV de circuitos de TUMFTM | — |
 | Braghin 2008 | F. Braghin, F. Cheli, S. Melzi, E. Sabbioni, «Race driver model», *Computers & Structures* 86, 2008. | `racing_line.rs`: trazada de mínima curvatura | — |
