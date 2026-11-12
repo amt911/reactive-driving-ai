@@ -27,7 +27,6 @@
 //! The results are written into a track-indexed [`RacingLine`] the agent owns, so the planner reads
 //! it exactly like the global line. Samples outside the window keep their last values.
 
-use crate::math::menger_curvature;
 use crate::min_curvature::{WindowQp, FREE};
 use crate::racing_line::{LineParams, RacingLine};
 use crate::speed_profile::{self, VehicleLimits};
@@ -61,6 +60,14 @@ impl Default for LocalParams {
 /// Largest start slope (dd/ds) taken from the car's course: a car pointing across the road gets a
 /// plan that turns it back over a few metres, not a vertical one.
 const MAX_START_SLOPE: f32 = 0.5;
+
+/// The car as [`LocalLine::update`] needs it: Frenet position and course minus track heading (rad).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CarFrenet {
+    pub s: f32,
+    pub d: f32,
+    pub course_error: f32,
+}
 
 /// What [`LocalLine::update`] did.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -120,12 +127,14 @@ impl LocalLine {
     }
 
     /// Re-plans when the period is up (from the line: [`Replan::Stitched`]), or at once when the
-    /// car is more than `stitch_tol` off the line (from the car: [`Replan::Restarted`]). `s`, `d`:
+    /// car is more than `stitch_tol` off the line and `may_restart` (from the car:
+    /// [`Replan::Restarted`]). `s`, `d`:
     /// the car's Frenet position; `course_error`: course minus track heading. Whoever keeps
     /// offsets relative to the line (the planner) must re-base them when it moves.
-    pub fn update(&mut self, track: &Track, s: f32, d: f32, course_error: f32, dt: f32) -> Replan {
+    pub fn update(&mut self, track: &Track, car: &CarFrenet, may_restart: bool, dt: f32) -> Replan {
+        let CarFrenet { s, d, course_error } = *car;
         self.timer -= dt;
-        let far = (d - self.line.offset_at(track, s)).abs() > self.params.stitch_tol;
+        let far = may_restart && (d - self.line.offset_at(track, s)).abs() > self.params.stitch_tol;
         if self.timer > 0.0 && !far {
             return Replan::Kept;
         }
@@ -133,8 +142,15 @@ impl LocalLine {
         let n = track.len();
         let i0 = (track.index_at(s).0 + 1) % n;
         let (a0, slope) = if far {
+            // From the car's offset, parallel to the lap plan there. Not along the car's course:
+            // that fed the car's own heading error into its reference — heading away, the new line
+            // headed away too, the car overshot it, re-pinned, and wove +-4 m (measured, proc:1
+            // traffic, laps 43 -> 66 s). The controller corrects the heading against a parallel line.
+            let _ = course_error;
+            let p0 = self.plan.offset[i0];
+            let slope =
+                ((self.plan.offset[(i0 + 1) % n] - p0) / track.spacing()).clamp(-MAX_START_SLOPE, MAX_START_SLOPE);
             let ahead = track.delta_s(s, i0 as f32 * track.spacing()).max(0.0);
-            let slope = course_error.tan().clamp(-MAX_START_SLOPE, MAX_START_SLOPE);
             (d + slope * ahead, slope)
         } else {
             let a0 = self.line.offset[i0];
@@ -178,20 +194,33 @@ impl LocalLine {
             line.offset[i] = x0 - slope * k as f32;
             line.points[i] = track.point(i) + track.normal(i) * line.offset[i];
         }
-        // Curvature over a +-2 stencil and a light smoothing, as `RacingLine::from_offsets`.
+        // Curvature: the lap plan's plus the bending of the deviation from it, κ ≈ κ_plan + e''
+        // with e = offset - plan offset (an offset path; the 1/(1 - κd) factor is < 3 % here). On
+        // the plan it is the plan's own, smooth curvature: recomputing it from the points with a
+        // short stencil turned 3 cm differences between windows into +18 % curvature and -7 m/s
+        // (measured). Lightly smoothed, as `RacingLine::from_offsets`.
+        let sp2 = track.spacing() * track.spacing();
+        let plan = &self.plan;
+        let e = |k: usize| line.offset[k % n] - plan.offset[k % n];
         for j in 0..w {
-            let i = idx(j);
-            self.raw[j] = menger_curvature(line.points[(i + n - 2) % n], line.points[i], line.points[(i + 2) % n]);
+            let i = idx(j) + n;
+            self.raw[j] = (e(i - 1) - 2.0 * e(i) + e(i + 1)) / sp2;
         }
         for j in 0..w {
             let a = self.raw[j.saturating_sub(1)];
             let c = self.raw[(j + 1).min(w - 1)];
-            self.curv[j] = 0.25 * a + 0.5 * self.raw[j] + 0.25 * c;
             let i = idx(j);
+            self.curv[j] = plan.curvature[i] + 0.25 * a + 0.5 * self.raw[j] + 0.25 * c;
             self.seg[j] = (line.points[(i + 1) % n] - line.points[i]).length();
         }
+        // Start from the lap plan's speed there: on the plan the window then reproduces the plan's
+        // profile exactly. Measured alternatives: the corner speed (no start constraint) asked for
+        // 61 m/s at 44 and the planner's gaps assume a reachable target (8-car race 24 contacts);
+        // the speed the sample had before made each window inherit the last one's dips (solo
+        // 65.2 -> 67.4 s); the car's speed made the target trail the car (71.4 s, 371 walls).
+        let v_start = self.plan.speed[i0];
         let v_end = self.plan.speed[idx(w - 1)];
-        speed_profile::compute_open(&self.curv, &self.seg, &line.limits, v_end, &mut self.vel);
+        speed_profile::compute_open(&self.curv, &self.seg, &line.limits, v_start, v_end, &mut self.vel);
         for j in 0..w {
             let i = idx(j);
             line.curvature[i] = self.curv[j];
@@ -311,11 +340,22 @@ mod tests {
         let mut l = LocalLine::new(&t, &VehicleLimits::default(), LocalParams::default());
         // The line starts as the lap plan: a car on it stitches.
         let on = l.line.offset_at(&t, 10.0);
-        assert_eq!(l.update(&t, 10.0, on, 0.0, 0.016), Replan::Stitched, "first update solves");
-        assert_eq!(l.update(&t, 10.5, on + 0.1, 0.0, 0.016), Replan::Kept, "within the period and near the line");
-        // 3 m off the line: solve at once, from the car.
+        assert_eq!(
+            l.update(&t, &CarFrenet { s: 10.0, d: on, course_error: 0.0 }, true, 0.016),
+            Replan::Stitched,
+            "first update solves"
+        );
+        assert_eq!(
+            l.update(&t, &CarFrenet { s: 10.5, d: on + 0.1, course_error: 0.0 }, true, 0.016),
+            Replan::Kept,
+            "within the period and near the line"
+        );
+        // 3 m off the line with someone around: the line stays put.
+        let off = l.line.offset_at(&t, 10.8) + 3.0;
+        assert_eq!(l.update(&t, &CarFrenet { s: 10.8, d: off, course_error: 0.0 }, false, 0.016), Replan::Kept);
+        // 3 m off the line, alone: solve at once, from the car.
         let off = l.line.offset_at(&t, 11.0) + 3.0;
-        assert_eq!(l.update(&t, 11.0, off, 0.0, 0.016), Replan::Restarted);
+        assert_eq!(l.update(&t, &CarFrenet { s: 11.0, d: off, course_error: 0.0 }, true, 0.016), Replan::Restarted);
         let i0 = t.index_at(11.0).0 + 1;
         assert!((l.line.offset[i0] - off).abs() < 0.1, "{} vs {off}", l.line.offset[i0]);
     }

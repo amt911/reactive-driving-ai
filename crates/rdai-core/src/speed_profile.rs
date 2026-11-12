@@ -94,11 +94,10 @@ pub fn compute(curvature: &[f32], seg: &[f32], lim: &VehicleLimits) -> Vec<f32> 
     v
 }
 
-/// Speed along an open stretch of path (no wrap-around), ending at `v_end` at its last point: the
-/// same forward/backward pass as [`compute`] (Velenis & Tsiotras 2005), with the forward pass
-/// starting from the corner speed at point 0 (no initial-speed constraint) and the backward pass from
-/// `v_end`. Writes into `out` (same length as `curvature`); no allocation.
-pub fn compute_open(curvature: &[f32], seg: &[f32], lim: &VehicleLimits, v_end: f32, out: &mut [f32]) {
+/// Speed along an open stretch of path (no wrap-around), starting at most at `v_start` and ending
+/// at `v_end` at its last point: the same forward/backward pass as [`compute`] (Velenis & Tsiotras
+/// 2005). Writes into `out` (same length as `curvature`); no allocation.
+pub fn compute_open(curvature: &[f32], seg: &[f32], lim: &VehicleLimits, v_start: f32, v_end: f32, out: &mut [f32]) {
     let n = curvature.len();
     debug_assert!(seg.len() == n && out.len() == n);
     for (v, k) in out.iter_mut().zip(curvature) {
@@ -108,6 +107,7 @@ pub fn compute_open(curvature: &[f32], seg: &[f32], lim: &VehicleLimits, v_end: 
     if n == 0 {
         return;
     }
+    out[0] = out[0].min(v_start.max(0.0));
     out[n - 1] = out[n - 1].min(v_end.max(0.0));
     for i in 0..n - 1 {
         let lat = out[i] * out[i] * curvature[i].abs();
@@ -144,7 +144,7 @@ mod tests {
         let k = vec![0.0; 150];
         let seg = vec![2.0; 150];
         let mut v = vec![0.0; 150];
-        compute_open(&k, &seg, &lim, 0.0, &mut v);
+        compute_open(&k, &seg, &lim, 80.0, 0.0, &mut v);
         assert_eq!(v[149], 0.0);
         assert!(v[0] > 75.0, "start {} should be near max_speed", v[0]);
         for i in 0..149 {
@@ -163,12 +163,25 @@ mod tests {
         }
         let seg = vec![2.0; 150];
         let mut v = vec![0.0; 150];
-        compute_open(&k, &seg, &lim, 80.0, &mut v);
+        compute_open(&k, &seg, &lim, 80.0, 80.0, &mut v);
         assert!((v[5] - (lim.max_lat_accel * 20.0).sqrt()).abs() < 0.1, "{}", v[5]);
         for i in 9..149 {
             let acc = (v[i + 1] * v[i + 1] - v[i] * v[i]) / (2.0 * seg[i]);
             assert!(acc <= lim.max_accel + 1e-2, "i={i} acc={acc}");
         }
+    }
+
+    #[test]
+    fn open_profile_starts_no_faster_than_given() {
+        // Leaving a slow corner: the window starts at 20 m/s, so the speed ahead is what the engine
+        // can reach from there, not the straight's top speed.
+        let lim = VehicleLimits::default();
+        let (k, seg) = (vec![0.0; 150], vec![2.0; 150]);
+        let mut v = vec![0.0; 150];
+        compute_open(&k, &seg, &lim, 20.0, 80.0, &mut v);
+        assert_eq!(v[0], 20.0);
+        let reach = (20.0f32 * 20.0 + 2.0 * lim.max_accel * 2.0).sqrt();
+        assert!(v[1] <= reach + 1e-3, "{} > {reach}", v[1]);
     }
 
     #[test]

@@ -4,7 +4,7 @@
 
 use crate::control::{lookahead, pure_pursuit, speed_control, VehicleGeometry};
 use crate::driver::{DriverProfile, DriverState};
-use crate::local_line::{LocalLine, LocalParams, Replan};
+use crate::local_line::{CarFrenet, LocalLine, LocalParams, Replan};
 use crate::math::{wrap_angle, Vec2};
 use crate::planner::{plan_point, EgoFrenet, Mode, Obstacle, Plan, Planner, PlannerParams};
 use crate::racing_line::RacingLine;
@@ -92,6 +92,10 @@ const TRAIL_BRAKE_FLOOR: f32 = 0.3;
 
 const MAX_SIDESLIP: f32 = 0.3;
 
+/// Distance (m) to the nearest obstacle beyond which the agent may re-plan its line from where it
+/// is. A guess: about 1.5 s at racing speed, longer than an overtake's lateral move.
+const RESTART_CLEARANCE: f32 = 60.0;
+
 /// Direction of travel from the displacement since the previous tick; the body heading when there
 /// is no usable displacement (first tick, slow, reversing, teleported).
 fn course_estimate(obs: &Observation, prev: Option<Vec2>) -> f32 {
@@ -166,7 +170,13 @@ impl Agent {
         // The planner's previous choice is an offset from the line: when the line moves, re-base it.
         let probe = self.planner.prev_end_s();
         let before = probe.map(|x| local.line.offset_at(track, x));
-        let replan = local.update(track, pr.s, pr.d, course_error, dt);
+        // Re-plan from the car only when nobody is near: in traffic the car is off its line because
+        // of the others (following, passing, avoiding), and moving the line every manoeuvre is
+        // measured from put cars in each other's way (measured: 8-car race 2 -> 209 contacts).
+        let alone =
+            obstacles.iter().all(|o| (o.position - obs.position).length_sq() > RESTART_CLEARANCE * RESTART_CLEARANCE);
+        let car = CarFrenet { s: pr.s, d: pr.d, course_error };
+        let replan = local.update(track, &car, alone, dt);
         if let (Some(x), Some(b), true) = (probe, before, replan != Replan::Kept) {
             self.planner.rebase(local.line.offset_at(track, x) - b, replan == Replan::Restarted);
         }
