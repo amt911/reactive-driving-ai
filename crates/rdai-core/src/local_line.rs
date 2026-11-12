@@ -42,13 +42,14 @@ pub struct LocalParams {
     /// Distance kept from each track edge (m), as `LineParams::margin`.
     pub margin: f32,
     /// Offset from the line (m) past which the window starts at the car instead of the line.
-    /// A guess: larger than tracking noise (~0.3 m in the solo lap), smaller than a pushed car.
+    /// Measured: at 0.5 m the window re-pinned on ordinary tracking errors and the line chased the
+    /// car (68.0 s, 2 walls); from 1.0 to 2.5 m no re-pin in a solo lap (65.12 s, 0 walls).
     pub stitch_tol: f32,
 }
 
 impl Default for LocalParams {
     fn default() -> Self {
-        LocalParams { horizon: 200.0, period: 0.1, margin: 1.5, stitch_tol: 0.5 }
+        LocalParams { horizon: 200.0, period: 0.1, margin: 1.5, stitch_tol: 1.5 }
     }
 }
 
