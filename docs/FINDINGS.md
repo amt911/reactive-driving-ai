@@ -329,3 +329,9 @@ the default circuit, solo, 3 laps (best lap; ideal 63.23 s):
   reverse: 1.3 M). A car across the track is outside what the Frenet lattice can plan: it needs a
   low-speed manoeuvre planner (Reeds-Shepp / hybrid A*). Until then, 243-run totals between
   variants move ±15 % on which race deadlocks; compare DNFs and per-run lines (`RUNS_FILE`).
+- **Compare variants run by run, with intervals (2026-11-12).** Totals over the matrix misled this
+  branch several times (contacts -10 %, pile-ups -43 % looked like wins). `scripts/compare.sh A B`
+  pairs two `RUNS_FILE`s and gives each metric's mean per-run difference with a 95 % bootstrap
+  interval (walls and contacts capped at 50/run). main -> this branch: seeds 1-9 walls +1.1/run
+  [+0.03, +2.2], contacts and lap not shown; seeds 10-18 walls +2.1 [+0.9, +3.4], lap -0.85 s
+  [-1.65, -0.10], contacts and DNFs not shown. Decide on intervals over both seed sets, not totals.
