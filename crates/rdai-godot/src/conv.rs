@@ -3,7 +3,7 @@
 //! counter-clockwise from +X (AGENTS.md, SI units). Flipping Y re-describes the same scene, it
 //! does not mirror it: the driver's left stays the driver's left.
 
-use rdai_core::{Observation, Obstacle, TrackPoint, Vec2};
+use rdai_core::{Observation, Obstacle, TrackPoint, Vec2, VehicleGeometry, VehicleLimits};
 
 /// Floats per obstacle in the flat array `RdaiDriver.tick` takes.
 pub const OBSTACLE_STRIDE: usize = 7;
@@ -73,6 +73,37 @@ pub fn obstacles(flat: &[f32], meters_per_unit: f32) -> Option<Vec<Obstacle>> {
     )
 }
 
+/// The car's performance envelope (SI) for the racing line and planner; `None` unless every value
+/// is finite and positive (drag may be zero).
+pub fn limits(
+    max_lat_accel: f32,
+    max_accel: f32,
+    max_brake: f32,
+    power_to_mass: f32,
+    drag_per_mass: f32,
+    max_speed: f32,
+) -> Option<VehicleLimits> {
+    let positive = [max_lat_accel, max_accel, max_brake, power_to_mass, max_speed];
+    let ok = positive.iter().all(|v| v.is_finite() && *v > 0.0) && drag_per_mass.is_finite() && drag_per_mass >= 0.0;
+    ok.then_some(VehicleLimits { max_lat_accel, max_accel, max_brake, power_to_mass, drag_per_mass, max_speed })
+}
+
+/// The car's geometry (SI metres, radians), with the reported position at the car's centre: the
+/// rear axle half a wheelbase back. `None` unless all are finite and positive and
+/// `max_steer < pi/2`.
+pub fn geometry(wheelbase: f32, max_steer: f32, length: f32, width: f32) -> Option<VehicleGeometry> {
+    let ok = [wheelbase, max_steer, length, width].iter().all(|v| v.is_finite() && *v > 0.0)
+        && max_steer < core::f32::consts::FRAC_PI_2;
+    ok.then_some(VehicleGeometry {
+        wheelbase,
+        rear_axle_offset: wheelbase / 2.0,
+        max_steer,
+        length,
+        width,
+        ..Default::default()
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -119,5 +150,26 @@ mod tests {
         assert!(obstacles(&flat[..6], 1.0).is_none(), "stride");
         assert!(obstacles(&[f32::NAN; 7], 1.0).is_none(), "NaN");
         assert_eq!(obstacles(&[], 1.0).map(|v| v.len()), Some(0));
+    }
+
+    #[test]
+    fn limits_take_positive_finite_values_and_allow_zero_drag() {
+        let l = limits(9.0, 5.0, 10.0, 200.0, 0.0, 50.0).expect("valid");
+        assert_eq!((l.max_lat_accel, l.max_accel, l.max_brake), (9.0, 5.0, 10.0));
+        assert_eq!((l.power_to_mass, l.drag_per_mass, l.max_speed), (200.0, 0.0, 50.0));
+        assert!(limits(0.0, 5.0, 10.0, 200.0, 0.0, 50.0).is_none(), "zero grip");
+        assert!(limits(9.0, 5.0, -1.0, 200.0, 0.0, 50.0).is_none(), "negative brake");
+        assert!(limits(9.0, 5.0, 10.0, 200.0, -0.1, 50.0).is_none(), "negative drag");
+        assert!(limits(9.0, f32::NAN, 10.0, 200.0, 0.0, 50.0).is_none(), "NaN");
+    }
+
+    #[test]
+    fn geometry_puts_the_rear_axle_half_a_wheelbase_back() {
+        let g = geometry(2.0, 0.6, 4.0, 1.8).expect("valid");
+        assert_eq!((g.wheelbase, g.rear_axle_offset, g.max_steer), (2.0, 1.0, 0.6));
+        assert_eq!((g.length, g.width), (4.0, 1.8));
+        assert!(geometry(0.0, 0.6, 4.0, 1.8).is_none(), "zero wheelbase");
+        assert!(geometry(2.0, 1.6, 4.0, 1.8).is_none(), "steer past pi/2");
+        assert!(geometry(2.0, 0.6, f32::INFINITY, 1.8).is_none(), "inf");
     }
 }
