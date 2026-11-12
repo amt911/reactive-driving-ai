@@ -88,6 +88,18 @@ hits, ~3.5 µs/tick**.
   cost for the speed lost to the candidate's own curvature plus a "hold the current offset"
   candidate (fixes `planner_offset` and the FFI round trip, but walls 32884, contacts 8803:
   candidates flip between hold and return and the steering oscillates into the wall).
+- *Still red after ff0e360: `planner_offset`, FFI round trip — the off-line return.* A 2 m return
+  over the 0.9 s × 60 m/s = 54 m transition needs e'' ≈ 0.004, which caps ~43 m/s in that corner.
+  Tried on ff0e360 (2026-11-12), each judged on the solo lap and an 8-car race (ff0e360: 0 walls
+  solo, 1 wall / 0 contacts in 8 cars), all rejected: the curve-loss cost + hold-offset candidate
+  again (13 walls solo, 103 / 22 in 8 cars); a second, 3× longer transition per end offset
+  (Werling samples several end times; 103 s / 9 walls solo — the long plans lag the car); a
+  GripMap-style cost on lateral acceleration beyond the grip at the current speed (11 walls solo,
+  56 / 8 in 8 cars). Every candidate-cost fix so far trades the return for wall hits: the cost
+  choice flips between ticks and the steering follows. What racing stacks do instead (to read
+  before the next try, PAPERS.md): the local planner samples **raceline-relative** trajectories
+  with a velocity profile of their own and a feasibility check (A2RL 2026, GripMap 2025), and
+  tracks with a model-based controller (MAP, ForzaETH: ~4× pure pursuit's tracking at speed).
 
 **Cause (original suspicion).** Step 4 of `Planner::plan` (`crates/rdai-core/src/planner.rs`)
 evaluates `kappa = line.curvature[idx] + q.second(sigma)`. When the car is displaced laterally, the
