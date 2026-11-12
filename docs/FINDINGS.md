@@ -75,6 +75,20 @@ Found: 2026-11-11 · core/agent
 
 ## Findings
 
+### `godot --headless --import` dumps core on exit with a GDExtension loaded
+
+**Symptom.** Godot 4.7.2 (Arch): `godot --headless --path examples/godot --import` does the import
+(writes `.godot/extension_list.cfg`), then exits 134 (SIGABRT). Without `rdai.gdextension` in the
+project it exits 0. The backtrace (`coredumpctl info`) has no frame in `librdai_godot.so`: a
+segfault inside Godot during editor shutdown, turned into abort by Godot's handler.
+**Workaround.** The extension does not need the editor: `scripts/godot-smoke.sh` writes
+`.godot/extension_list.cfg` (one line, `res://rdai.gdextension`) and runs the script directly;
+that run exits 0.
+**Why it isn't obvious.** The import looks like the required first step, and the abort comes after
+it has already done its work.
+
+Found: 2026-11-12 · godot · **Status: worked around**
+
 ### crates.io downloads of large crates fail with `SSL routines::unexpected eof while reading`
 
 **Symptom.** `cargo build -p rdai-viewer` fails downloading `image-0.24.9` (8.8 MB):

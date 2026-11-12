@@ -97,17 +97,41 @@ no depende del orden de rotación ni del cabeceo en las rampas.
 
 ## Godot (GDExtension con godot-rust)
 
-En Godot no hace falta la ABI en C. Con [godot-rust (gdext)](https://github.com/godot-rust/gdext) se
-escribe un crate `rdai-godot` que depende de `rdai-core` directamente:
+En Godot no hace falta la ABI en C: el crate `crates/rdai-godot` (con
+[godot-rust (gdext)](https://github.com/godot-rust/gdext) 0.5) depende de `rdai-core` directamente y
+registra dos clases. Funciona con Godot 4.2 o posterior (probado con 4.7.2).
 
-- Un recurso `RdaiTrack` que construye `rdai_core::Track` y `RacingLine` a partir de un `Curve3D` o
-  de un CSV.
-- Un nodo `RdaiDriver` (hijo de un `VehicleBody3D`) que en `_physics_process(delta)` lee el estado
-  del coche padre, reúne los obstáculos cercanos de un grupo (`"rdai_obstacles"`), llama a
-  `Agent::tick` y escribe `engine_force`, `brake` y `steering`.
-- Las conversiones de ejes de la tabla anterior, solo en ese nodo.
+- **`RdaiTrack`** (`RefCounted`): `meters_per_unit` (1.0 en un juego 3D en metros; 0.05 si 20 px son
+  un metro), `build(centro: PackedVector2Array, ancho_izq: PackedFloat32Array, ancho_der:
+  PackedFloat32Array) -> bool`, `ideal_lap() -> float` y `racing_line() -> PackedVector2Array` (para
+  dibujarla). Se construye una vez y lo comparten todos los coches.
+- **`RdaiDriver`** (`RefCounted`): `setup(track, seed, experience, stamina, aggression)` y, en cada
+  `_physics_process(delta)`, `tick(posicion: Vector2, rotacion: float, velocidad: float,
+  obstaculos: PackedFloat32Array, delta) -> Dictionary` con `steer`, `throttle`, `brake`, `reverse`
+  y `mode`. Los obstáculos van en un array plano, 7 números por obstáculo: x, y, rotación,
+  velocidad, aceleración, largo, ancho. Devuelve un diccionario vacío si no hay `setup` o si llega
+  algún valor no finito.
 
-Es la siguiente fase del proyecto (está en la lista de tareas de AGENTS.md).
+Todo entra en las **convenciones de Godot 2D**: Y hacia abajo, `rotation` en sentido horario en
+pantalla y longitudes en unidades de Godot. La clase convierte a SI. En 3D se pasa
+`Vector2(pos.x, pos.z)` y, como rotación, `atan2(f.z, f.x)`, con `f` el vector "delante" del coche
+(en `VehicleBody3D`, `+basis.z`). `steer = +1` gira a la izquierda del conductor, que en pantalla 2D
+es el sentido antihorario: la `rotation` disminuye.
+
+Cómo cargarla en un proyecto:
+
+1. `cargo build --release -p rdai-godot` (genera `target/release/librdai_godot.so`, `.dylib` o `.dll`).
+2. Copia [`examples/godot/rdai.gdextension`](../examples/godot/rdai.gdextension) al proyecto y
+   ajusta las rutas de la biblioteca.
+3. Abre el proyecto en el editor una vez (o crea `.godot/extension_list.cfg` con la línea
+   `res://rdai.gdextension`).
+
+[`examples/godot/smoke.gd`](../examples/godot/smoke.gd) es un ejemplo completo: un coche cinemático
+en GDScript que da una vuelta a una elipse conducido por `RdaiDriver`. `scripts/godot-smoke.sh` lo
+ejecuta en Godot sin ventana y falla si el coche se sale de la pista.
+
+Siguiente paso: un nodo hijo de `VehicleBody3D` que lea el coche padre y los obstáculos de un grupo
+y escriba `engine_force`, `brake` y `steering` por sí solo.
 
 ## Unreal
 
