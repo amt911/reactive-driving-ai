@@ -23,6 +23,9 @@ one() {
 }
 export -f one; export bench
 results=$(xargs -P 4 -I{} bash -c 'one "$@"' _ {} <<<"$jobs")
+# RUNS_FILE=path keeps every run's line (OK walls contacts after dnf laps finished track seed cars
+# scenario) for per-run comparisons between two binaries.
+[ -n "${RUNS_FILE:-}" ] && printf '%s\n' "$results" > "$RUNS_FILE"
 if grep -q '^BAD' <<<"$results"; then grep '^BAD' <<<"$results" >&2; exit 1; fi
 # The 5 runs with most wall hits (walls are not capped: one car stuck scraping a wall can carry
 # the total), then the summary on the last line.
