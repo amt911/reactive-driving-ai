@@ -204,12 +204,19 @@ impl LocalLine {
             let i = idx(j);
             line.points[i] = track.point(i) + track.normal(i) * line.offset[i];
         }
-        // The two samples behind the window continue the pinned start, so the curvature stencil at
-        // the start does not see a kink against stale values (it read as a slow corner).
-        let (x0, slope) = (line.offset[i0], line.offset[idx(1)] - line.offset[i0]);
+        // The two samples behind the window continue the pinned start's deviation from the lap
+        // plan, so the curvature stencil at the start does not see a kink against stale values
+        // (it read as a slow corner). The deviation, not the offset: the curvature below is the
+        // plan's plus e'', and a straight offset where the plan bends sideways is a false e''
+        // (0.0025 1/m under the car on proc:4: full braking from 66 m/s and a wall, every lap).
+        let plan = &self.plan;
+        let (e0, de) = (
+            line.offset[i0] - plan.offset[i0],
+            (line.offset[idx(1)] - plan.offset[idx(1)]) - (line.offset[i0] - plan.offset[i0]),
+        );
         for k in 1..=2 {
             let i = (i0 + n - k) % n;
-            line.offset[i] = x0 - slope * k as f32;
+            line.offset[i] = plan.offset[i] + e0 - de * k as f32;
             line.points[i] = track.point(i) + track.normal(i) * line.offset[i];
         }
         // Curvature: the lap plan's plus the bending of the deviation from it, κ ≈ κ_plan + e''
@@ -218,7 +225,6 @@ impl LocalLine {
         // short stencil turned 3 cm differences between windows into +18 % curvature and -7 m/s
         // (measured). Lightly smoothed, as `RacingLine::from_offsets`.
         let sp2 = track.spacing() * track.spacing();
-        let plan = &self.plan;
         let e = |k: usize| line.offset[k % n] - plan.offset[k % n];
         for j in 0..w {
             let i = idx(j) + n;
@@ -293,6 +299,30 @@ mod tests {
         let (local, glob) =
             (window_cost(&t, &l.line.offset, i0, l.window()), window_cost(&t, &global.offset, i0, l.window()));
         assert!(local <= glob + 1e-4, "local {local} > global {glob}");
+    }
+
+    #[test]
+    fn a_window_on_the_plan_starts_with_the_plans_curvature() {
+        // Stitched exactly on the lap plan where the plan bends sideways (largest second difference
+        // of its offset), the window's first sample must carry the plan's curvature: the samples
+        // behind it continue the deviation from the plan (zero), not the offset. Continuing the
+        // offset in a straight line put a false 0.0025 1/m kink under the car on proc:4 (target
+        // 69 -> 58 m/s in 0.3 s, full braking, wall).
+        let t = rect();
+        let lim = VehicleLimits::default();
+        let mut l = LocalLine::new(&t, &lim, LocalParams::default());
+        let n = t.len();
+        let o = |i: usize| l.plan.offset[i % n];
+        let i0 = (2..n - 2).max_by(|&a, &b| {
+            let da = (o(a - 1) - 2.0 * o(a) + o(a + 1)).abs();
+            let db = (o(b - 1) - 2.0 * o(b) + o(b + 1)).abs();
+            da.total_cmp(&db)
+        });
+        let i0 = i0.expect("samples");
+        let (a0, slope) = (o(i0), (o(i0 + 1) - o(i0)) / t.spacing());
+        l.solve(&t, i0, a0, slope);
+        let (got, want) = (l.line.curvature[i0], l.plan.curvature[i0]);
+        assert!((got - want).abs() < 2e-4, "sample {i0}: curvature {got} vs plan {want}");
     }
 
     #[test]
