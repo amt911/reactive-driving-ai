@@ -35,6 +35,10 @@ Hay cuatro capas, de la más lenta a la más rápida. Las dos últimas se ejecut
 2. **Cada 0,1 s, para cada agente:** reoptimiza los próximos 200 m desde donde está el coche
    (`local_line.rs`), unidos al final con su plan de vuelta. Si algo lo saca de su línea, planifica
    la vuelta desde ahí a la velocidad que permite la pista, en lugar de volver a la fuerza.
+   **Vuelta a vuelta** (`learning.rs`, control por aprendizaje iterativo [Arimoto 1984; Kapania &
+   Gerdes 2015b]): donde el coche se abrió de su plan en una curva, el agarre de ese tramo y de los
+   60 m anteriores baja para la vuelta siguiente; donde no, vuelve poco a poco al declarado. Un
+   coche con un 10 % menos de agarre del que dice tener golpea el muro solo en la primera vuelta.
 3. **En cada tick, para cada agente:** un planificador local (unos 20 caminos candidatos × 12
    muestras × los obstáculos cercanos) que elige el camino y la velocidad objetivo.
 4. **En cada tick, después del planificador:** los controladores (pure pursuit para el volante y un
