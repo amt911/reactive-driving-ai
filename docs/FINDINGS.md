@@ -319,3 +319,13 @@ the default circuit, solo, 3 laps (best lap; ideal 63.23 s):
   (3171 / 4562 / 53); a 1 s hold between re-pins (1963 / 1697 / 12 / 55.42); `RESTART_CLEARANCE`
   120 m (1988 / 2115 / 17 / 57.13); re-pinning only once the car's course runs along the line
   (1817 / 1811 / 11 / 56.16: fewer fast walls, more slow ones).
+- **Pile-up deadlocks decide the matrix (2026-11-12).** On seeds 10-18 this branch had 4 DNFs and
+  21130 walls against main's 0 and 1340 — almost all from one race (default, seed 12, 10 cars,
+  debris): six cars stopped against the right wall at s 596-620, all in Emergency, for ever. The
+  front one sat across the track (63° to it), tail on the wall, nose at the debris 6.5 m away: every
+  Frenet candidate starts with its heading (slope ~2), so every path ran into the debris, and
+  reversing pushed into the wall; the five behind could neither pass it nor back off. Other
+  binaries deadlock in other races (window fix alone: 29097 contacts in that race; mirrored
+  reverse: 1.3 M). A car across the track is outside what the Frenet lattice can plan: it needs a
+  low-speed manoeuvre planner (Reeds-Shepp / hybrid A*). Until then, 243-run totals between
+  variants move ±15 % on which race deadlocks; compare DNFs and per-run lines (`RUNS_FILE`).
