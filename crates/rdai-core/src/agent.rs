@@ -4,6 +4,7 @@
 
 use crate::control::{lookahead, pure_pursuit, speed_control, VehicleGeometry};
 use crate::driver::{DriverProfile, DriverState};
+use crate::learning::{LapMemory, LearnParams};
 use crate::local_line::{CarFrenet, LocalLine, LocalParams, Replan};
 use crate::math::{wrap_angle, Vec2};
 use crate::planner::{plan_point, EgoFrenet, Mode, Obstacle, Plan, Planner, PlannerParams};
@@ -76,6 +77,8 @@ pub struct Agent {
     /// The agent's own line, re-optimised over the road ahead while it drives (`local_line.rs`);
     /// created on the first tick, when the track is known.
     local: Option<LocalLine>,
+    /// Grip learned lap to lap (`learning.rs`); feeds `local`'s speeds.
+    memory: Option<LapMemory>,
 }
 
 /// Largest gap between course and body heading trusted as sideslip (rad); a bigger one is a
@@ -99,6 +102,10 @@ const EDGE_CLEARANCE: f32 = 1.0;
 /// Distance (m) to the nearest obstacle beyond which the agent may re-plan its line from where it
 /// is. A guess: about 1.5 s at racing speed, longer than an overtake's lateral move.
 const RESTART_CLEARANCE: f32 = 60.0;
+
+/// Curvature (1/m) above which running wide counts as missing grip: a 500 m radius. Guess; on
+/// straights the offset from the plan is tracking, not grip.
+const CORNER_CURVATURE: f32 = 0.002;
 
 /// Direction of travel from the displacement since the previous tick; the body heading when there
 /// is no usable displacement (first tick, slow, reversing, teleported).
@@ -130,6 +137,7 @@ impl Agent {
             prev_position: None,
             track_int: 0.0,
             local: None,
+            memory: None,
         }
     }
 
@@ -173,6 +181,10 @@ impl Agent {
             // traffic (proc:1, 8 cars: laps 47 -> 54 s, measured).
             let params = LocalParams { plan_margin: 0.5 * self.geometry.width + EDGE_CLEARANCE, ..Default::default() };
             self.local = Some(LocalLine::new(track, &limits_from.limits, params));
+            // Experience sets how fast the driver learns the car (spec, phase 2): 0.5x-1.5x.
+            let rate = LearnParams::default().rate * (0.5 + self.driver.profile.experience);
+            self.memory =
+                Some(LapMemory::new(track.len(), track.spacing(), LearnParams { rate, ..Default::default() }));
         }
         let Some(local) = self.local.as_mut() else { return Controls::default() };
         // The planner's previous choice is an offset from the line: when the line moves, re-base it.
@@ -215,7 +227,20 @@ impl Agent {
 
         // Longitudinal.
         let a = speed_control(v, plan.target_speed, plan.accel_ff, plan.accel_limit);
-        let lim = &line.limits;
+        let lim = line.limits;
+        // Learning signal: how far the car ran wide of its plan in a corner, only while it drives
+        // for the road (not avoiding, not braking for someone), where running wide means grip.
+        let k = line.curvature[pr.index];
+        let wide = if v > 5.0 && plan.mode == Mode::Cruise && k.abs() > CORNER_CURVATURE {
+            (-off_plan * k.signum()).max(0.0)
+        } else {
+            0.0
+        };
+        if let Some(m) = self.memory.as_mut() {
+            if m.observe(pr.index, wide) {
+                local.grip.copy_from_slice(m.grip());
+            }
+        }
         let (mut throttle, mut brake) = if a >= 0.0 {
             ((a / lim.accel_available(v, 0.0).max(0.5)).clamp(0.0, 1.0), 0.0)
         } else {

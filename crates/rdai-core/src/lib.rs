@@ -16,6 +16,7 @@
 pub mod agent;
 pub mod control;
 pub mod driver;
+pub mod learning;
 pub mod local_line;
 pub mod math;
 pub mod min_curvature;

@@ -109,6 +109,10 @@ pub struct LocalLine {
     curv: Vec<f32>,
     seg: Vec<f32>,
     vel: Vec<f32>,
+    gw: Vec<f32>,
+    /// Grip scale per track sample (1 = declared; [`crate::learning::LapMemory`] learns it). The
+    /// next window's speeds use it.
+    pub grip: Vec<f32>,
 }
 
 impl LocalLine {
@@ -130,6 +134,8 @@ impl LocalLine {
             curv: f(),
             seg: f(),
             vel: f(),
+            gw: f(),
+            grip: vec![1.0; n],
         }
     }
 
@@ -224,6 +230,7 @@ impl LocalLine {
             let i = idx(j);
             self.curv[j] = plan.curvature[i] + 0.25 * a + 0.5 * self.raw[j] + 0.25 * c;
             self.seg[j] = (line.points[(i + 1) % n] - line.points[i]).length();
+            self.gw[j] = self.grip[i];
         }
         // Start from the lap plan's speed there: on the plan the window then reproduces the plan's
         // profile exactly. Measured alternatives: the corner speed (no start constraint) asked for
@@ -232,7 +239,7 @@ impl LocalLine {
         // 65.2 -> 67.4 s); the car's speed made the target trail the car (71.4 s, 371 walls).
         let v_start = self.plan.speed[i0];
         let v_end = self.plan.speed[idx(w - 1)];
-        speed_profile::compute_open(&self.curv, &self.seg, &line.limits, v_start, v_end, &mut self.vel);
+        speed_profile::compute_open(&self.curv, &self.seg, &self.gw, &line.limits, v_start, v_end, &mut self.vel);
         for j in 0..w {
             let i = idx(j);
             line.curvature[i] = self.curv[j];
@@ -286,6 +293,30 @@ mod tests {
         let (local, glob) =
             (window_cost(&t, &l.line.offset, i0, l.window()), window_cost(&t, &global.offset, i0, l.window()));
         assert!(local <= glob + 1e-4, "local {local} > global {glob}");
+    }
+
+    #[test]
+    fn learned_grip_slows_the_window_where_it_is_lower() {
+        // Same window, grip 0.81 on its second half: there the speeds are at most ~0.9 x (corner
+        // speed goes with sqrt(grip); in braking zones drag, which is not grip, adds a little:
+        // 0.9001 measured, hence 0.91); the start, before braking for it, is untouched.
+        let t = rect();
+        let lim = VehicleLimits::default();
+        let mut l = LocalLine::new(&t, &lim, LocalParams::default());
+        let i0 = 40;
+        let (a0, slope) = (l.plan.offset[i0], (l.plan.offset[i0 + 1] - l.plan.offset[i0]) / t.spacing());
+        l.solve(&t, i0, a0, slope);
+        let full = l.line.speed.clone();
+        let w = l.window();
+        for i in i0 + w / 2..i0 + w {
+            l.grip[i % t.len()] = 0.81;
+        }
+        l.solve(&t, i0, a0, slope);
+        for i in i0 + w / 2..i0 + w - 1 {
+            let i = i % t.len();
+            assert!(l.line.speed[i] <= 0.91 * full[i], "sample {i}: {} vs {}", l.line.speed[i], full[i]);
+        }
+        assert!(l.line.speed[i0] == full[i0], "the start keeps its speed");
     }
 
     #[test]

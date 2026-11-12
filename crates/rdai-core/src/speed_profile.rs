@@ -44,6 +44,17 @@ impl VehicleLimits {
         let engine = self.max_accel.min(self.power_to_mass / v.max(1.0));
         engine * ellipse - self.drag_per_mass * v * v
     }
+    /// These limits with the tyre grip scaled by `g` (1 = as declared): lateral, braking and the
+    /// traction-limited acceleration all come from the same friction (`docs/ALGORITHMS.md`).
+    #[inline]
+    pub fn with_grip(&self, g: f32) -> VehicleLimits {
+        VehicleLimits {
+            max_lat_accel: self.max_lat_accel * g,
+            max_accel: self.max_accel * g,
+            max_brake: self.max_brake * g,
+            ..*self
+        }
+    }
     /// Deceleration available (positive) at speed `v`; drag helps braking.
     #[inline]
     pub fn brake_available(&self, v: f32, lat: f32) -> f32 {
@@ -97,12 +108,22 @@ pub fn compute(curvature: &[f32], seg: &[f32], lim: &VehicleLimits) -> Vec<f32> 
 /// Speed along an open stretch of path (no wrap-around), starting at most at `v_start` and ending
 /// at `v_end` at its last point: the same forward/backward pass as [`compute`] (Velenis & Tsiotras
 /// 2005). Writes into `out` (same length as `curvature`); no allocation.
-pub fn compute_open(curvature: &[f32], seg: &[f32], lim: &VehicleLimits, v_start: f32, v_end: f32, out: &mut [f32]) {
+pub fn compute_open(
+    curvature: &[f32],
+    seg: &[f32],
+    grip: &[f32],
+    lim: &VehicleLimits,
+    v_start: f32,
+    v_end: f32,
+    out: &mut [f32],
+) {
     let n = curvature.len();
-    debug_assert!(seg.len() == n && out.len() == n);
-    for (v, k) in out.iter_mut().zip(curvature) {
+    debug_assert!(seg.len() == n && grip.len() == n && out.len() == n);
+    let at = |i: usize| lim.with_grip(grip[i]);
+    for (i, (v, k)) in out.iter_mut().zip(curvature).enumerate() {
         let k = k.abs();
-        *v = if k < 1e-6 { lim.max_speed } else { (lim.max_lat_accel / k).sqrt().min(lim.max_speed) };
+        let l = at(i);
+        *v = if k < 1e-6 { l.max_speed } else { (l.max_lat_accel / k).sqrt().min(l.max_speed) };
     }
     if n == 0 {
         return;
@@ -111,7 +132,7 @@ pub fn compute_open(curvature: &[f32], seg: &[f32], lim: &VehicleLimits, v_start
     out[n - 1] = out[n - 1].min(v_end.max(0.0));
     for i in 0..n - 1 {
         let lat = out[i] * out[i] * curvature[i].abs();
-        let a = lim.accel_available(out[i], lat).max(0.0);
+        let a = at(i).accel_available(out[i], lat).max(0.0);
         let reach = (out[i] * out[i] + 2.0 * a * seg[i]).sqrt();
         if reach < out[i + 1] {
             out[i + 1] = reach;
@@ -119,7 +140,7 @@ pub fn compute_open(curvature: &[f32], seg: &[f32], lim: &VehicleLimits, v_start
     }
     for i in (0..n - 1).rev() {
         let lat = out[i + 1] * out[i + 1] * curvature[i + 1].abs();
-        let b = lim.brake_available(out[i + 1], lat);
+        let b = at(i + 1).brake_available(out[i + 1], lat);
         let reach = (out[i + 1] * out[i + 1] + 2.0 * b * seg[i]).sqrt();
         if reach < out[i] {
             out[i] = reach;
@@ -138,13 +159,30 @@ mod tests {
     use super::*;
 
     #[test]
+    fn less_grip_scales_corner_speed_and_braking() {
+        // 0.01 1/m corner after a straight: corner speed sqrt(a_lat g / k), braking with g too.
+        let lim = VehicleLimits::default();
+        let mut k = vec![0.0; 100];
+        k[60..].fill(0.01);
+        let seg = vec![2.0; 100];
+        let (mut full, mut low) = (vec![0.0; 100], vec![0.0; 100]);
+        compute_open(&k, &seg, &[1.0; 100], &lim, 60.0, 60.0, &mut full);
+        compute_open(&k, &seg, &[0.81; 100], &lim, 60.0, 60.0, &mut low);
+        let corner = (lim.max_lat_accel / 0.01).sqrt();
+        assert!((full[80] - corner).abs() < 1e-3, "{}", full[80]);
+        assert!((low[80] - 0.9 * corner).abs() < 1e-3, "{}", low[80]);
+        // Braking into it starts earlier: at the same sample the low-grip car is slower.
+        assert!(low[50] < full[50] - 1.0, "{} vs {}", low[50], full[50]);
+    }
+
+    #[test]
     fn open_profile_ends_at_the_given_speed_and_brakes_within_physics() {
         // 300 m straight ending at 0 m/s: top speed far from the end, a feasible stop at the end.
         let lim = VehicleLimits::default();
         let k = vec![0.0; 150];
         let seg = vec![2.0; 150];
         let mut v = vec![0.0; 150];
-        compute_open(&k, &seg, &lim, 80.0, 0.0, &mut v);
+        compute_open(&k, &seg, &[1.0; 150], &lim, 80.0, 0.0, &mut v);
         assert_eq!(v[149], 0.0);
         assert!(v[0] > 75.0, "start {} should be near max_speed", v[0]);
         for i in 0..149 {
@@ -163,7 +201,7 @@ mod tests {
         }
         let seg = vec![2.0; 150];
         let mut v = vec![0.0; 150];
-        compute_open(&k, &seg, &lim, 80.0, 80.0, &mut v);
+        compute_open(&k, &seg, &vec![1.0; k.len()], &lim, 80.0, 80.0, &mut v);
         assert!((v[5] - (lim.max_lat_accel * 20.0).sqrt()).abs() < 0.1, "{}", v[5]);
         for i in 9..149 {
             let acc = (v[i + 1] * v[i + 1] - v[i] * v[i]) / (2.0 * seg[i]);
@@ -178,7 +216,7 @@ mod tests {
         let lim = VehicleLimits::default();
         let (k, seg) = (vec![0.0; 150], vec![2.0; 150]);
         let mut v = vec![0.0; 150];
-        compute_open(&k, &seg, &lim, 20.0, 80.0, &mut v);
+        compute_open(&k, &seg, &vec![1.0; k.len()], &lim, 20.0, 80.0, &mut v);
         assert_eq!(v[0], 20.0);
         let reach = (20.0f32 * 20.0 + 2.0 * lim.max_accel * 2.0).sqrt();
         assert!(v[1] <= reach + 1e-3, "{} > {reach}", v[1]);
