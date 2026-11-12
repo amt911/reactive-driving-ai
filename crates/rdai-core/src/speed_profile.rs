@@ -94,6 +94,39 @@ pub fn compute(curvature: &[f32], seg: &[f32], lim: &VehicleLimits) -> Vec<f32> 
     v
 }
 
+/// Speed along an open stretch of path (no wrap-around), ending at `v_end` at its last point: the
+/// same forward/backward pass as [`compute`] (Velenis & Tsiotras 2005), with the forward pass
+/// starting from the corner speed at point 0 (no initial-speed constraint) and the backward pass from
+/// `v_end`. Writes into `out` (same length as `curvature`); no allocation.
+pub fn compute_open(curvature: &[f32], seg: &[f32], lim: &VehicleLimits, v_end: f32, out: &mut [f32]) {
+    let n = curvature.len();
+    debug_assert!(seg.len() == n && out.len() == n);
+    for (v, k) in out.iter_mut().zip(curvature) {
+        let k = k.abs();
+        *v = if k < 1e-6 { lim.max_speed } else { (lim.max_lat_accel / k).sqrt().min(lim.max_speed) };
+    }
+    if n == 0 {
+        return;
+    }
+    out[n - 1] = out[n - 1].min(v_end.max(0.0));
+    for i in 0..n - 1 {
+        let lat = out[i] * out[i] * curvature[i].abs();
+        let a = lim.accel_available(out[i], lat).max(0.0);
+        let reach = (out[i] * out[i] + 2.0 * a * seg[i]).sqrt();
+        if reach < out[i + 1] {
+            out[i + 1] = reach;
+        }
+    }
+    for i in (0..n - 1).rev() {
+        let lat = out[i + 1] * out[i + 1] * curvature[i + 1].abs();
+        let b = lim.brake_available(out[i + 1], lat);
+        let reach = (out[i + 1] * out[i + 1] + 2.0 * b * seg[i]).sqrt();
+        if reach < out[i] {
+            out[i] = reach;
+        }
+    }
+}
+
 /// Lap time of a profile (trapezoidal in speed).
 pub fn lap_time(speed: &[f32], seg: &[f32]) -> f32 {
     let n = speed.len();
@@ -103,6 +136,40 @@ pub fn lap_time(speed: &[f32], seg: &[f32]) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn open_profile_ends_at_the_given_speed_and_brakes_within_physics() {
+        // 300 m straight ending at 0 m/s: top speed far from the end, a feasible stop at the end.
+        let lim = VehicleLimits::default();
+        let k = vec![0.0; 150];
+        let seg = vec![2.0; 150];
+        let mut v = vec![0.0; 150];
+        compute_open(&k, &seg, &lim, 0.0, &mut v);
+        assert_eq!(v[149], 0.0);
+        assert!(v[0] > 75.0, "start {} should be near max_speed", v[0]);
+        for i in 0..149 {
+            let decel = (v[i] * v[i] - v[i + 1] * v[i + 1]) / (2.0 * seg[i]);
+            assert!(decel <= lim.max_brake + lim.drag_per_mass * v[i] * v[i] + 1e-2, "i={i} decel={decel}");
+        }
+    }
+
+    #[test]
+    fn open_profile_accelerates_out_of_a_corner_at_the_start() {
+        // A tight corner at the start: speed after it rises no faster than the engine allows.
+        let lim = VehicleLimits::default();
+        let mut k = vec![0.0; 150];
+        for x in k.iter_mut().take(10) {
+            *x = 1.0 / 20.0;
+        }
+        let seg = vec![2.0; 150];
+        let mut v = vec![0.0; 150];
+        compute_open(&k, &seg, &lim, 80.0, &mut v);
+        assert!((v[5] - (lim.max_lat_accel * 20.0).sqrt()).abs() < 0.1, "{}", v[5]);
+        for i in 9..149 {
+            let acc = (v[i + 1] * v[i + 1] - v[i] * v[i]) / (2.0 * seg[i]);
+            assert!(acc <= lim.max_accel + 1e-2, "i={i} acc={acc}");
+        }
+    }
 
     #[test]
     fn constant_radius_hits_lateral_limit() {
