@@ -62,9 +62,24 @@ hits, ~3.5 µs/tick**.
   plus consistency tolerance 0.5 / 0.25 m: 98 s. With the course right the car drifts ~1 m outward
   through long corners (pure pursuit on body yaw under sideslip tracks with an offset ≈ β·ld), the
   plan diverges, consistency resets at 1 m and the reset plan brakes mid-corner (spin at s ≈ 650).
-  The phantom slope was compensating the tracking drift. Next step is a controller with lateral
-  error feedback that holds the plan under sideslip (Stanley-style, or yaw-rate feedforward), *then*
-  the course fix — not either alone.
+  The phantom slope was compensating the tracking drift.
+- *Parked on branch `exp/sideslip-tracking` (2026-11-12, not merged):* the course fix **plus** a
+  leaky integral (gain 0.03 rad/(m·s), τ 5 s) on the car's offset from its plan, integrated only
+  in Cruise and reset otherwise. Solo best lap 70.4 → 65.4 s (ideal 63.4) but **1 wall hit on lap
+  1**, so `solo_laps` stays red, and `followers_never_touch_a_car_that_crashes_ahead` goes red (the
+  crashed car, recovered 11 s later, touches a follower while rejoining). The lap-1 wall is the
+  braking-zone loop at s 480–640: drifting off while braking and turning, the return curvature
+  lowers the target, harder braking takes lateral grip, the car drifts further (spins at e ≈ −9 m).
+  Faster arrival with the course fix exposes it. That loop — the same one behind `planner_offset`
+  and the FFI round trip — is the next thing to fix; then this branch. On the 243 runs, against the branch before it:
+  walls 3659 → 3650, contacts 2934 → **2321**, pile-ups 21 → 15, after the scenario 1416 → **932**,
+  DNF 1 → 0, mean best lap 59.6 → **57.6 s**. Rejected on the same matrix: the integral in every
+  mode (gain 0.03: contacts 3931, pile-ups 38; gain 0.05: walls 5563, contacts 4984 — it winds up
+  during avoidance); gain 0.1 is unstable solo (37 walls); the gated integral without the course
+  fix (walls 2586 but contacts 3212, pile-ups 32); a per-candidate cost for the speed lost to the
+  candidate's own curvature, with a "hold the current offset" candidate (fixes `planner_offset`
+  and the FFI round trip, but walls 32884, contacts 8803: candidates flip between hold and
+  return and the steering oscillates into the wall; `curve-loss.patch`, out of git).
 
 **Cause (original suspicion).** Step 4 of `Planner::plan` (`crates/rdai-core/src/planner.rs`)
 evaluates `kappa = line.curvature[idx] + q.second(sigma)`. When the car is displaced laterally, the
