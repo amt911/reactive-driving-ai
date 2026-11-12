@@ -16,6 +16,7 @@
 pub mod agent;
 pub mod control;
 pub mod driver;
+pub mod local_line;
 pub mod math;
 pub mod planner;
 pub mod racing_line;
@@ -26,6 +27,7 @@ pub mod track;
 pub use agent::{Agent, AgentConfig, Controls, Observation};
 pub use control::VehicleGeometry;
 pub use driver::{DriverParams, DriverProfile, DriverState};
+pub use local_line::{LocalLine, LocalParams};
 pub use math::Vec2;
 pub use planner::{Mode, Obstacle, Plan, PlannerParams};
 pub use racing_line::{LineParams, RacingLine};
