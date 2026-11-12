@@ -287,3 +287,7 @@ the default circuit, solo, 3 laps (best lap; ideal 63.23 s):
 - **Sweep artefacts:** checking a window solver by sweeping it round a lap needs the sweep to
   close (overlap the start) and must not overwrite samples behind the window — both showed up as
   kinks that read as a 7 s slower line.
+- **A spun car is as wide as it is long (2026-11-12):** the planner took every obstacle's footprint
+  as aligned with the track (half width 1.0 m); a car spun across it reaches 2.25 m to each side, and
+  followers in the crash journey brushed it at 3.2 m lateral distance. `frenet_extent` boxes the
+  rotated rectangle. Matrix (243 runs): contacts after the scenario 960 -> 770, walls 1650 -> 1468.
