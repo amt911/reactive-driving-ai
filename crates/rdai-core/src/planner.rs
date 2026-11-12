@@ -279,14 +279,15 @@ impl Planner {
             let window = (dist / track.spacing()) as usize + 8;
             let pr = track.project_window(o.position, ego_index, window);
             let rel = wrap_angle(o.heading - track.heading_at(pr.s));
+            let ext = frenet_extent(o.length, o.width, rel);
             self.obstacles.push(ObsFrenet {
                 s: pr.s,
                 d: pr.d,
                 v_s: o.speed * rel.cos(),
                 v_d: o.speed * rel.sin(),
                 accel: o.accel * rel.cos(),
-                half_len: 0.5 * o.length,
-                half_wid: 0.5 * o.width,
+                half_len: ext.0,
+                half_wid: ext.1,
             });
         }
 
@@ -497,6 +498,14 @@ impl Planner {
     }
 }
 
+/// Half extents (along the track, across it) of an `length` x `width` car at `rel` radians from
+/// the track's heading: the axis-aligned box around the rotated rectangle. A car spun across the
+/// track is as wide as it is long; taken as aligned, followers passed it 1.25 m too close.
+fn frenet_extent(length: f32, width: f32, rel: f32) -> (f32, f32) {
+    let (s, c) = (rel.sin().abs(), rel.cos().abs());
+    (0.5 * (length * c + width * s), 0.5 * (length * s + width * c))
+}
+
 /// World point of a plan at `sigma` metres ahead of its start (for steering and drawing).
 pub fn plan_point(track: &Track, line: &RacingLine, s0: f32, q: &Quintic, sigma: f32) -> Vec2 {
     let s = s0 + sigma;
@@ -522,6 +531,17 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn a_car_across_the_track_is_as_wide_as_it_is_long() {
+        let close = |a: (f32, f32), b: (f32, f32)| (a.0 - b.0).abs() < 1e-5 && (a.1 - b.1).abs() < 1e-5;
+        // 4.5 x 2.0 m car: aligned, across, and at 45 degrees (both extents (L + W) / (2 sqrt 2)).
+        assert!(close(frenet_extent(4.5, 2.0, 0.0), (2.25, 1.0)));
+        assert!(close(frenet_extent(4.5, 2.0, std::f32::consts::FRAC_PI_2), (1.0, 2.25)));
+        assert!(close(frenet_extent(4.5, 2.0, std::f32::consts::PI), (2.25, 1.0)));
+        let k = 6.5 / (2.0 * std::f32::consts::SQRT_2);
+        assert!(close(frenet_extent(4.5, 2.0, -std::f32::consts::FRAC_PI_4), (k, k)));
+    }
 
     #[test]
     fn quintic_meets_boundary_conditions() {
