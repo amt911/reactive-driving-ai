@@ -45,11 +45,16 @@ pub struct LocalParams {
     /// Measured: at 0.5 m the window re-pinned on ordinary tracking errors and the line chased the
     /// car (68.0 s, 2 walls); from 1.0 to 2.5 m no re-pin in a solo lap (65.12 s, 0 walls).
     pub stitch_tol: f32,
+    /// Weight of the bending relative to the lap plan against the absolute curvature
+    /// (`min_curvature.rs`); 0 = pure minimum curvature from the car. Measured (planner_offset,
+    /// solo lap): 0 cuts across a corner from 4 m wide (target 45.3 m/s, line 52.0); 1, 4 and 16
+    /// keep near line speed; 4 kept, solo lap 65.22 s either way.
+    pub relative_weight: f32,
 }
 
 impl Default for LocalParams {
     fn default() -> Self {
-        LocalParams { horizon: 200.0, period: 0.1, margin: 1.5, stitch_tol: 1.5 }
+        LocalParams { horizon: 200.0, period: 0.1, margin: 1.5, stitch_tol: 1.5, relative_weight: 4.0 }
     }
 }
 
@@ -135,7 +140,8 @@ impl LocalLine {
         let w = self.qp.len();
         let end = (self.plan.offset[(i0 + w - 2) % n], self.plan.offset[(i0 + w - 1) % n]);
         let start = (a0, a0 + slope * track.spacing());
-        self.qp.solve(track, i0, self.params.margin, start, end, &mut self.line.offset, &mut self.bound);
+        let anchor = Some((self.plan.offset.as_slice(), self.params.relative_weight));
+        self.qp.solve(track, i0, self.params.margin, start, end, &mut self.line.offset, &mut self.bound, anchor);
         self.write_back(track, i0);
     }
 
@@ -262,6 +268,25 @@ mod tests {
         assert!(l.line.speed[last] <= l.plan.speed[last], "end speed above the plan");
         assert_eq!(l.line.offset[last], l.plan.offset[last]);
         assert!(l.line.speed[(i0 + 10) % n] > 20.0, "should not crawl near the start");
+    }
+
+    #[test]
+    fn a_car_outside_the_margin_comes_back_without_a_corner() {
+        // 7 m right of the centre on a 14 m track: outside the 1.5 m margin. The way back must
+        // start gently (no jump to the margin) and never leave the track.
+        let t = rect();
+        let lim = VehicleLimits::default();
+        let mut l = LocalLine::new(&t, &lim, LocalParams::default());
+        let i0 = 20;
+        l.solve(&t, i0, -6.8, 0.0);
+        let n = t.len();
+        for j in 0..l.window() {
+            let i = (i0 + j) % n;
+            assert!(l.line.offset[i] >= -7.0 - 1e-3, "sample {i} off the track: {}", l.line.offset[i]);
+        }
+        for i in i0..i0 + 10 {
+            assert!(l.line.curvature[i].abs() < 0.003, "sample {i}: curvature {}", l.line.curvature[i]);
+        }
     }
 
     #[test]

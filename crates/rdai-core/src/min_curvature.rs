@@ -18,6 +18,13 @@ const REGULARISATION: f32 = 1e-5;
 /// bound per iteration.
 const MAX_ACTIVE_SET_ITERATIONS: usize = 12;
 
+/// Slope (m per m) at which a start outside the margin is brought back inside it: 1 m per 20 m.
+/// A guess, about the lateral slope of a lane change at speed.
+const MARGIN_RETURN_SLOPE: f32 = 0.05;
+/// Curvature (1/m) the return starts with: a 1 km radius, a tenth of the circuit's fast corners.
+/// A guess.
+const MARGIN_RETURN_CURVATURE: f32 = 0.001;
+
 pub const FREE: i8 = 0;
 pub const AT_LO: i8 = -1;
 pub const AT_HI: i8 = 1;
@@ -91,6 +98,7 @@ impl WindowQp {
         end: (f32, f32),
         offsets: &mut [f32],
         bound: &mut [i8],
+        anchor: Option<(&[f32], f32)>,
     ) {
         let n = track.len();
         let w = self.w;
@@ -118,6 +126,28 @@ impl WindowQp {
         for j in [0, 1, w - 2, w - 1] {
             self.state[j] = PINNED;
         }
+        // A start outside the margin (a car pushed wide) widens the bounds near the start, so the
+        // path comes back inside the margin at a bounded slope instead of in one jump (measured: a
+        // car 6 m off the line was told 28 m/s for the jump). Never past the track edge.
+        let sp = track.spacing();
+        for j in 2..w - 2 {
+            // Parabolic, then straight: it starts flat and bends at MARGIN_RETURN_CURVATURE up to
+            // the slope, so following it costs no corner at the start (a linear ramp did: 0.012).
+            let x = sp * (j - 1) as f32;
+            let x1 = MARGIN_RETURN_SLOPE / MARGIN_RETURN_CURVATURE;
+            let ramp = if x < x1 {
+                0.5 * MARGIN_RETURN_CURVATURE * x * x
+            } else {
+                0.5 * MARGIN_RETURN_CURVATURE * x1 * x1 + MARGIN_RETURN_SLOPE * (x - x1)
+            };
+            let i = idx(j);
+            if start.1 < self.lo[j] {
+                self.lo[j] = self.lo[j].min(start.1 + ramp).max(-track.width_right(i));
+            }
+            if start.1 > self.hi[j] {
+                self.hi[j] = self.hi[j].max(start.1 - ramp).min(track.width_left(i));
+            }
+        }
         // Hessian band and linear term of sum_j |c_j|^2, c_j = Δ²p_j = r_j + sum_k u_k a_k with
         // r_j = Δ²base_j and u = (n_{j-1}, -2 n_j, n_{j+1}): the objective `racing_line.rs`
         // minimises by gradient descent. Measured alternatives: the component along the track
@@ -137,6 +167,30 @@ impl WindowQp {
                         self.h1[k] += v;
                     } else {
                         self.h2[k] += v;
+                    }
+                }
+            }
+        }
+        // Optional: lambda * sum_j (Δ²(a - anchor)_j)^2, the bending of the path relative to an
+        // anchor line (scalar stencil 1, -2, 1 on the offsets). Zero on the anchor, so a window of an
+        // anchor that is optimal for the curvature term solves back to it for any lambda; off it,
+        // paths parallel to the anchor cost nothing and a merge spreads over the window instead of
+        // cutting across (the raceline-relative planning of the A2RL stacks, PAPERS.md).
+        if let Some((anchor, lambda)) = anchor {
+            for j in 1..w - 1 {
+                let r = -(anchor[idx(j - 1)] - 2.0 * anchor[idx(j)] + anchor[idx(j + 1)]);
+                let u = [1.0f32, -2.0, 1.0];
+                for p in 0..3 {
+                    let k = j - 1 + p;
+                    self.b[k] += 2.0 * lambda * u[p] * r;
+                    self.h0[k] += 2.0 * lambda * u[p] * u[p];
+                    for (q, uq) in u.iter().enumerate().take(p) {
+                        let v = 2.0 * lambda * u[p] * uq;
+                        if p - q == 1 {
+                            self.h1[k] += v;
+                        } else {
+                            self.h2[k] += v;
+                        }
                     }
                 }
             }

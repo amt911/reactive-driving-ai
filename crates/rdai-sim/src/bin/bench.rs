@@ -48,7 +48,8 @@ fn main() {
     let dt = 1.0 / 120.0;
     let mut injected = false;
     let mut contacts_after = 0usize;
-    // --trace FILE: CSV of car 0 every 0.1 s (time, s, d, line offset, speed, target, mode, steer, throttle, brake).
+    // --trace FILE: CSV of car 0 every 0.1 s (time, s, d, line offset, speed, target, mode, steer, throttle,
+    // brake, wall hits, own line offset, own line offset 60 m ahead, line offset 60 m ahead).
     let mut trace = get("--trace").map(|p| std::io::BufWriter::new(std::fs::File::create(p).expect("trace file")));
     let mut steps = 0u64;
     while !w.finished() && w.time < 60.0 * 30.0 {

@@ -140,7 +140,7 @@ fn polish(track: &Track, offset: &mut [f32], margin: f32) {
         while i0 < n {
             let at = |j: usize| offset[(i0 + j) % n];
             let (start, end) = ((at(0), at(1)), (at(w - 2), at(w - 1)));
-            qp.solve(track, i0, margin, start, end, offset, &mut bound);
+            qp.solve(track, i0, margin, start, end, offset, &mut bound, None);
             i0 += w / 4;
         }
     }
@@ -198,6 +198,23 @@ mod tests {
     }
 
     #[test]
+    fn bending_relative_to_the_line_itself_does_not_move_it() {
+        // The relative term is zero on its anchor, so anchored to the line the window still solves
+        // back to the line (what lets local_line.rs use it without the line drifting).
+        let t = circle_free_rect();
+        let line = RacingLine::build(&t, &LineParams::default(), &VehicleLimits::default());
+        let n = t.len();
+        let mut qp = WindowQp::new(100);
+        let mut bound = vec![FREE; n];
+        let mut off = line.offset.clone();
+        let at = |o: &[f32], j: usize| o[(90 + j) % n];
+        let (start, end) = ((at(&off, 0), at(&off, 1)), (at(&off, 98), at(&off, 99)));
+        qp.solve(&t, 90, 1.5, start, end, &mut off, &mut bound, Some((&line.offset, 4.0)));
+        let worst = (0..n).map(|i| (off[i] - line.offset[i]).abs()).fold(0.0, f32::max);
+        assert!(worst < 0.05, "moved the line by {worst} m");
+    }
+
+    #[test]
     fn the_line_is_a_fixed_point_of_the_window_solver() {
         // What local_line.rs relies on: a window cut out of the line and solved again with its ends
         // pinned to the line gives the line back, so re-planning ahead does not move it.
@@ -210,7 +227,7 @@ mod tests {
             let mut off = line.offset.clone();
             let at = |j: usize| off[(i0 + j) % n];
             let (start, end) = ((at(0), at(1)), (at(98), at(99)));
-            qp.solve(&t, i0, 1.5, start, end, &mut off, &mut bound);
+            qp.solve(&t, i0, 1.5, start, end, &mut off, &mut bound, None);
             let worst = (0..n).map(|i| (off[i] - line.offset[i]).abs()).fold(0.0, f32::max);
             assert!(worst < 0.05, "window at {i0} moved the line by {worst} m");
         }
