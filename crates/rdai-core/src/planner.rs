@@ -505,6 +505,22 @@ pub fn plan_point(track: &Track, line: &RacingLine, s0: f32, q: &Quintic, sigma:
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn rebase_keeps_the_previous_choice_in_place_and_drops_the_plan_on_restart() {
+        let mut p = Planner::new(PlannerParams::default());
+        assert_eq!(p.prev_end_s(), None);
+        p.prev_delta = 3.0;
+        p.prev_plan = Some((100.0, Quintic::new(0.0, 0.0, 3.0, 40.0)));
+        assert_eq!(p.prev_end_s(), Some(140.0));
+        // The line moved 2 m towards the choice: the same spot is now 1 m off it.
+        p.rebase(2.0, false);
+        assert_eq!(p.prev_delta, 1.0);
+        assert!(p.prev_plan.is_some(), "a stitched move keeps the plan");
+        p.rebase(1.0, true);
+        assert_eq!(p.prev_delta, 0.0);
+        assert!(p.prev_plan.is_none(), "a restart drops it");
+    }
+
     use super::*;
 
     #[test]
