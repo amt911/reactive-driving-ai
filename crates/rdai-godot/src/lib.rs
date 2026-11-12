@@ -11,7 +11,8 @@
 
 use godot::prelude::*;
 use rdai_core::{
-    Agent, AgentConfig, DriverProfile, LineParams, Observation, PlannerParams, RacingLine, Track,
+    Agent, AgentConfig, DriverProfile, LineParams, Observation, PlannerParams, RacingLine, Track, VehicleGeometry,
+    VehicleLimits,
 };
 
 pub mod conv;
@@ -34,22 +35,22 @@ pub struct RdaiTrack {
     /// `max_brake` (m/s^2), `power_to_mass` (W/kg), `drag_per_mass` (1/m), `max_speed` (m/s) —
     /// or the AI will plan corners the car cannot take.
     #[var]
-    #[init(val = 12.0)]
+    #[init(val = VehicleLimits::default().max_lat_accel)]
     max_lat_accel: f32,
     #[var]
-    #[init(val = 7.0)]
+    #[init(val = VehicleLimits::default().max_accel)]
     max_accel: f32,
     #[var]
-    #[init(val = 13.0)]
+    #[init(val = VehicleLimits::default().max_brake)]
     max_brake: f32,
     #[var]
-    #[init(val = 330.0)]
+    #[init(val = VehicleLimits::default().power_to_mass)]
     power_to_mass: f32,
     #[var]
-    #[init(val = 0.00035)]
+    #[init(val = VehicleLimits::default().drag_per_mass)]
     drag_per_mass: f32,
     #[var]
-    #[init(val = 80.0)]
+    #[init(val = VehicleLimits::default().max_speed)]
     max_speed: f32,
     built: Option<(Track, RacingLine)>,
 }
@@ -117,16 +118,16 @@ pub struct RdaiDriver {
     /// Car geometry used by `setup`, SI (metres, radians; not Godot units): `steer = 1` means
     /// `max_steer`. Defaults: a GT car (2.7 m wheelbase, 0.45 rad, 4.6 x 1.9 m).
     #[var]
-    #[init(val = 2.7)]
+    #[init(val = VehicleGeometry::default().wheelbase)]
     wheelbase: f32,
     #[var]
-    #[init(val = 0.45)]
+    #[init(val = VehicleGeometry::default().max_steer)]
     max_steer: f32,
     #[var]
-    #[init(val = 4.6)]
+    #[init(val = VehicleGeometry::default().length)]
     length: f32,
     #[var]
-    #[init(val = 1.9)]
+    #[init(val = VehicleGeometry::default().width)]
     width: f32,
     agent: Option<Agent>,
     track: Option<Gd<RdaiTrack>>,
