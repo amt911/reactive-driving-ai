@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/rdai-core", "crates/rdai-sim", "crates/rdai-ffi", "crates/rdai-viewer"]
+members = ["crates/rdai-core", "crates/rdai-sim", "crates/rdai-ffi", "crates/rdai-viewer", "crates/rdai-godot"]
 
 [workspace.package]
 version = "0.1.0"

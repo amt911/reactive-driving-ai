@@ -19,10 +19,11 @@ porqué de cada cambio.
 | `crates/rdai-sim` | Simulación 2D de referencia: modelo de bicicleta dinámico con elipse de fricción, varios coches, muros, contactos, rebufo y vueltas. Incluye el binario `bench`. |
 | `crates/rdai-ffi` | ABI en C (`librdai.so` / `librdai.a`) con la cabecera [`include/rdai.h`](include/rdai.h). |
 | `crates/rdai-viewer` | Visor 2D (macroquad) para ver a la IA conducir. |
+| `crates/rdai-godot` | Extensión de Godot 4 (GDExtension): clases `RdaiTrack` y `RdaiDriver`. |
 
-Aún no hay ningún motor conectado. La simulación 2D hace de motor para probar la IA, y
-[docs/ENGINE-INTEGRATION.md](docs/ENGINE-INTEGRATION.md) explica cómo conectarla a Godot, Unreal o
-Unity.
+Godot ya está conectado: `scripts/godot-smoke.sh` da una vuelta con la IA dentro de un Godot real
+sin ventana. Unreal y Unity usan la ABI en C;
+[docs/ENGINE-INTEGRATION.md](docs/ENGINE-INTEGRATION.md) explica cómo conectar cada motor.
 
 ## Cómo ejecutarlo
 

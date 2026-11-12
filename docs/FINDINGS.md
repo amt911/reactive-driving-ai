@@ -48,16 +48,13 @@ Found: 2026-11-11 · core/planner, ffi · **Status: FFI test split (2026-11-12);
 
 ### FFI functions can unwind a panic into C
 
-**Symptom.** Seen 2026-11-12: an observation with a NaN position (what a physics explosion hands
-the AI) panics in the core (`f32::clamp` with NaN bounds), the panic cannot unwind across
-`extern "C"`, and the process aborts ("panic in a function that cannot unwind") — the game with it.
-**Fix.** Non-finite observations, obstacles, `dt` and control points are refused at the boundary
-(-1 / null), and every export runs inside `guard` (`catch_unwind` -> -2 / null / NaN). Null
-handles are refused instead of dereferenced. Tests in `crates/rdai-ffi/src/lib.rs`.
-**Why it isn't obvious.** Nothing in the sim ever sends NaN, so no behaviour test sees it; only a
-host does.
+**Symptom.** None seen yet. `crates/rdai-ffi/src/lib.rs` has no `catch_unwind`: a panic inside
+`Agent::tick` (e.g. an index out of range on a malformed track) would unwind across `extern "C"`,
+which aborts the process (Rust ≥ 1.81) and takes the game engine down.
+**Fix.** Pending: wrap every exported body in `std::panic::catch_unwind` and return an error code
+(AGENTS.md, Working rules).
 
-Found: 2026-11-11 · ffi · **Status: fixed (2026-11-12)**
+Found: 2026-11-11 · ffi · **Status: open**
 
 ### Cars stopped against an obstacle never backed off
 
@@ -74,6 +71,20 @@ racing again; not yet separated.
 Found: 2026-11-11 · core/agent
 
 ## Findings
+
+### `godot --headless --import` dumps core on exit with a GDExtension loaded
+
+**Symptom.** Godot 4.7.2 (Arch): `godot --headless --path examples/godot --import` does the import
+(writes `.godot/extension_list.cfg`), then exits 134 (SIGABRT). Without `rdai.gdextension` in the
+project it exits 0. The backtrace (`coredumpctl info`) has no frame in `librdai_godot.so`: a
+segfault inside Godot during editor shutdown, turned into abort by Godot's handler.
+**Workaround.** The extension does not need the editor: `scripts/godot-smoke.sh` writes
+`.godot/extension_list.cfg` (one line, `res://rdai.gdextension`) and runs the script directly;
+that run exits 0.
+**Why it isn't obvious.** The import looks like the required first step, and the abort comes after
+it has already done its work.
+
+Found: 2026-11-12 · godot · **Status: worked around**
 
 ### crates.io downloads of large crates fail with `SSL routines::unexpected eof while reading`
 

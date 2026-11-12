@@ -209,10 +209,11 @@ numbers you'd trust by mistake.
 | Reference physics | `rdai-sim` (depends only on `rdai-core`) | dynamic bicycle with friction ellipse, `World`, `bench` binary |
 | Engine boundary | `rdai-ffi` → `librdai` (`cdylib` + `staticlib`) + hand-written `include/rdai.h` | C ABI for Godot (GDExtension), Unreal, Unity (P/Invoke) |
 | Viewer | `macroquad` 0.4 | 2D debug viewer (`rdai-viewer`) |
+| Godot | `godot` (gdext) 0.5 | `rdai-godot`: GDExtension (`RdaiTrack`, `RdaiDriver`), Godot 4.2+ |
 | Tests | `cargo test`; `cargo llvm-cov`; `cargo mutants` | unit, behaviour, coverage, mutation |
 
-Planned (add when the phase needs them, then update this table): `godot` (gdext) wrapper crate;
-`criterion` only if `bench` timings stop being enough.
+Planned (add when the phase needs them, then update this table): `criterion` only if `bench`
+timings stop being enough.
 
 ## Workspace structure
 
@@ -226,10 +227,12 @@ Planned (add when the phase needs them, then update this table): `godot` (gdext)
 │   ├── rdai-sim/      # vehicle.rs, world.rs (N cars, walls, contacts, slipstream, laps), tracks.rs,
 │   │                  #   bin/bench.rs; tests/ = behaviour suite
 │   ├── rdai-ffi/      # C ABI (lib name `rdai`)
-│   └── rdai-viewer/   # macroquad viewer
+│   ├── rdai-viewer/   # macroquad viewer
+│   └── rdai-godot/    # Godot 4 GDExtension (conv.rs = the only Godot<->core conversion)
 ├── include/rdai.h     # C header, kept in sync by hand with rdai-ffi
 ├── examples/c/        # smoke.c
-├── scripts/           # c-smoke.sh, heavy.sh, cpu-lock.sh, coverage.sh, mutants.sh
+├── examples/godot/    # headless Godot project for scripts/godot-smoke.sh
+├── scripts/           # c-smoke.sh, godot-smoke.sh, heavy.sh, cpu-lock.sh, coverage.sh, mutants.sh
 └── docs/              # ALGORITHMS, ENGINE-INTEGRATION, FINDINGS, FACTS, agents/
 ```
 
@@ -244,6 +247,7 @@ cargo test --workspace --release --no-fail-fast                       # all test
 cargo clippy --workspace --all-targets -- -D warnings    # lint (gate)
 cargo fmt --all --check                                  # format (gate)
 scripts/c-smoke.sh                                       # C ABI from a real C compiler
+scripts/godot-smoke.sh                                   # one lap in a real headless Godot 4 (local)
 scripts/coverage.sh                                      # coverage gate (80% lines, rdai-core + rdai-sim)
 scripts/mutants.sh                                       # mutation gate over rdai-core
 ```
