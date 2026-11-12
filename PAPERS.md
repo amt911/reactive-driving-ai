@@ -1,5 +1,32 @@
 # Lo que necesito que busques
 
+## 2026-11-12 19:28 — planificador de maniobras a baja velocidad (coches atascados)
+
+Hay atascos que el planificador actual no puede resolver: un coche cruzado en la pista (63°) con el
+morro hacia un escombro y la trasera contra el muro, y cinco más bloqueados detrás para siempre
+(`docs/FINDINGS.md`, «Pile-up deadlocks»). Hace falta un planificador de maniobras (adelante y atrás)
+para esos casos. Por orden de utilidad:
+
+1. **Dolgov, Thrun, Montemerlo & Diebel**, «Path Planning for Autonomous Vehicles in Unknown
+   Semi-structured Environments», *International Journal of Robotics Research* 29(5), 2010 — el A\*
+   híbrido (Junior, DARPA Urban Challenge): nodos continuos en una rejilla, heurísticas, expansión
+   analítica con Reeds-Shepp. Vale también la versión corta: «Practical Search Techniques in Path
+   Planning for Autonomous Driving», AAAI Workshop 2008.
+2. **Reeds & Shepp**, «Optimal paths for a car that goes both forwards and backwards», *Pacific
+   Journal of Mathematics* 145(2), 1990 — las curvas mínimas con marcha atrás (heurística y tramo
+   final del A\* híbrido).
+3. **Agarwal, Schwarzer, Castro, Courville & Bellemare**, «Deep Reinforcement Learning at the Edge
+   of the Statistical Precipice», *NeurIPS* 2021 (arXiv 2108.13264) — cómo comparar resultados de
+   simulación con mucha varianza (intervalos por *bootstrap*); lo cito en `scripts/compare.sh`.
+
+Déjalos en `papers/` (local, no se sube).
+
+## 2026-11-11 — Werling 2010, Treiber 2000, Heilmeier 2019 (cerrado 2026-11-12)
+
+Llegaron los tres y están verificados en la bibliografía. Pendiente aparte, sin papers: comparar la
+trazada con el código de TUMFTM (`global_racetrajectory_optimization`) en un circuito de
+`racetrack-database`.
+
 ## 2026-11-12 16:48 — aprendizaje del agarre vuelta a vuelta (fase 2, `learning.rs`)
 
 El aprendizaje funciona (coche con 10 % menos de agarre: golpea solo en la vuelta 1), pero la
@@ -63,16 +90,3 @@ sección en el comentario del código (reglas en
 | Mayne 2000 | D. Q. Mayne, J. B. Rawlings, C. V. Rao, P. O. M. Scokaert, «Constrained model predictive control: Stability and optimality», *Automatica* 36(6), 2000. | `local_line.rs`: condición terminal del horizonte deslizante (el final de la ventana se une al plan de vuelta). | No |
 | Betz 2022 | J. Betz et al., «Autonomous Vehicles on the Edge: A Survey on Autonomous Vehicle Racing», *IEEE Open Journal of Intelligent Transportation Systems* 3, 2022. | `local_line.rs`: arquitectura de dos niveles (trazada global + planificación local). | No |
 | Fan 2018 | H. Fan et al., «Baidu Apollo EM Motion Planner», arXiv:1807.08048, 2018. | `local_line.rs`: *stitching* (el nuevo plan empieza en el anterior mientras el coche lo siga). | No |
-
-## Lo que necesito que busques
-
-El bloque más reciente va primero, ordenado por lo que más ayudaría.
-
-### 2026-11-11
-
-1. **Los PDF de Werling 2010 y Treiber 2000**, para citar ecuaciones concretas en `planner.rs` y
-   comprobar que el término de consistencia entre ticks (empezar desde el plan anterior) es el del
-   artículo. Busca el título exacto.
-2. **Heilmeier 2019** (versión en abierto en el repositorio de TUM) y su código
-   `TUMFTM/global_racetrajectory_optimization`, para comparar la trazada y la vuelta ideal con un
-   circuito de `TUMFTM/racetrack-database`.
