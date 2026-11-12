@@ -100,6 +100,13 @@ hits, ~3.5 µs/tick**.
   before the next try, PAPERS.md): the local planner samples **raceline-relative** trajectories
   with a velocity profile of their own and a feasibility check (A2RL 2026, GripMap 2025), and
   tracks with a model-based controller (MAP, ForzaETH: ~4× pure pursuit's tracking at speed).
+  Also tried (2026-11-12): stretching the chosen return after the choice (×1.25 up to the horizon)
+  until it costs ≤ 3 % of the parallel path's speed, only with the road clear. Unbounded: 12 walls
+  solo, 423 / 40 in 8 cars — **the racing line runs edge to edge, so a slow return leaves the
+  track at the exits**; with a bounds check: 1 wall solo, 13 / 2 in 8 cars, first lap slower, and
+  `planner_offset` still red at 6 m (a return over the whole horizon still caps the speed). The
+  test's premise holds: at its four cases the parallel path stays ≥ 2.9 m inside the track over
+  the horizon.
 
 **Cause (original suspicion).** Step 4 of `Planner::plan` (`crates/rdai-core/src/planner.rs`)
 evaluates `kappa = line.curvature[idx] + q.second(sigma)`. When the car is displaced laterally, the
